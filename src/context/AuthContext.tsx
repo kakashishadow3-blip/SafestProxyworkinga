@@ -56,11 +56,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { mounted = false; subscription.unsubscribe() }
   }, [])
 
-  const signUp = (email: string, password: string, username: string) =>
-    supabase.auth.signUp({ email, password, options: { data: { username } } })
+    const signUp = (email: string, password: string, username: string, captchaToken?: string) =>
+    supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { username }, ...(captchaToken ? { captchaToken } : {}) },
+    })
 
-  const signIn = (email: string, password: string) =>
-    supabase.auth.signInWithPassword({ email, password })
+  const signIn = (email: string, password: string, captchaToken?: string) =>
+    supabase.auth.signInWithPassword({
+      email,
+      password,
+      ...(captchaToken ? { options: { captchaToken } } : {}),
+    })
 
   const signOut = () => supabase.auth.signOut()
 
