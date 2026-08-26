@@ -7,8 +7,8 @@ interface AuthContextType {
   user: User | null
   profile: Profile | null
   loading: boolean
-  signUp: (email: string, password: string, username: string) => ReturnType<typeof supabase.auth.signUp>
-  signIn: (email: string, password: string) => ReturnType<typeof supabase.auth.signInWithPassword>
+  signUp: (email: string, password: string, username: string, captchaToken?: string) => ReturnType<typeof supabase.auth.signUp>
+  signIn: (email: string, password: string, captchaToken?: string) => ReturnType<typeof supabase.auth.signInWithPassword>
   signOut: () => ReturnType<typeof supabase.auth.signOut>
   signInWithGoogle: () => ReturnType<typeof supabase.auth.signInWithOAuth>
   signInWithGithub: () => ReturnType<typeof supabase.auth.signInWithOAuth>
