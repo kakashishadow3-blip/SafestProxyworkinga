@@ -11,14 +11,16 @@ import ApiManagement from '@/components/sections/ApiManagement'
 import Plans from '@/components/sections/Plans'
 import Billing from '@/components/sections/Billing'
 import ProfileSection from '@/components/sections/ProfileSection'
+import UsageManager from '@/pages/admin/UsageManager'
 import type { Plan, Profile, ProxyCredential, Subscription } from '@/types'
 
 const LOGO_URL = 'https://res.cloudinary.com/dhcryevaj/image/upload/v1785014439/Safestproxy_favicon_oknort.png'
 
-type SectionKey = 'overview' | 'proxy' | 'api' | 'plans' | 'billing' | 'profile' | 'manage'
+type SectionKey = 'overview' | 'usage' | 'proxy' | 'api' | 'plans' | 'billing' | 'profile' | 'manage'
 
 const SECTION_TABS: { key: SectionKey; label: string }[] = [
   { key: 'overview', label: 'Overview' },
+  { key: 'usage', label: 'Usage Stats' },
   { key: 'proxy', label: 'Proxy Access' },
   { key: 'api', label: 'API Management' },
   { key: 'plans', label: 'Available Plans' },
@@ -193,6 +195,7 @@ export default function AdminUserView() {
         </div>
 
         {section === 'overview' && <Overview userId={userId} />}
+        {section === 'usage' && admin && userId && <UsageManager adminId={admin.id} userId={userId} />}
         {section === 'proxy' && <ProxyAccess userId={userId} />}
         {section === 'api' && <ApiManagement userId={userId} />}
         {section === 'plans' && <Plans userId={userId} />}
