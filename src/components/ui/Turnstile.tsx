@@ -54,7 +54,7 @@ const Turnstile = forwardRef<TurnstileHandle, Props>(function Turnstile({ onVeri
         if (cancelled || !containerRef.current || !window.turnstile || widgetIdRef.current) return
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
           sitekey: TURNSTILE_SITE_KEY,
-          theme: 'light',
+          theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light',
           callback: (token: string) => onVerifyRef.current(token),
           'expired-callback': () => onVerifyRef.current(null),
           'error-callback': () => onVerifyRef.current(null),
