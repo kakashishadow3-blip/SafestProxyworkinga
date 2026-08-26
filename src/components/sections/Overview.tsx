@@ -7,6 +7,7 @@ import CustomSelect from '@/components/ui/CustomSelect'
 import DateRangePicker, { DateRange, defaultRange } from '@/components/ui/DateRangePicker'
 import { compactNum, dateKey } from '@/lib/utils'
 import { tierLabel } from '@/lib/plans'
+import { useTheme, isDarkMode } from '@/lib/theme'
 import type { Subscription, UsageStat } from '@/types'
 
 Chart.register(...registerables)
@@ -36,6 +37,7 @@ export default function Overview({ userId }: Props) {
   const [statsType, setStatsType] = useState('traffic')
   const [planFilter, setPlanFilter] = useState('__all__')
   const [loading, setLoading] = useState(true)
+  const [theme] = useTheme()
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const chartRef = useRef<Chart | null>(null)
@@ -118,7 +120,11 @@ export default function Overview({ userId }: Props) {
     if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null }
     if (!hasData) return
 
-    const inkColor = '#14161D'
+    const dark = isDarkMode()
+    const inkColor = dark ? '#E8EAF2' : '#14161D'
+    const fillTop = dark ? 'rgba(232,234,242,0.12)' : 'rgba(20,22,29,0.09)'
+    const fillEnd = dark ? 'rgba(232,234,242,0)' : 'rgba(20,22,29,0)'
+    const gridColor = dark ? 'rgba(236,237,243,0.06)' : 'rgba(20,22,29,0.045)'
     const n = rows.length
     chartRef.current = new Chart(canvas, {
       type: 'line',
@@ -132,8 +138,8 @@ export default function Overview({ userId }: Props) {
           pointHoverRadius: 4.5, pointHoverBackgroundColor: '#fff', pointHoverBorderColor: inkColor, pointHoverBorderWidth: 2,
           backgroundColor: (c) => {
             const g = c.chart.ctx.createLinearGradient(0, 0, 0, c.chart.height || 300)
-            g.addColorStop(0, 'rgba(20,22,29,0.09)')
-            g.addColorStop(1, 'rgba(20,22,29,0)')
+            g.addColorStop(0, fillTop)
+            g.addColorStop(1, fillEnd)
             return g
           },
         }],
@@ -169,7 +175,7 @@ export default function Overview({ userId }: Props) {
           },
           y: {
             beginAtZero: true,
-            grid: { color: 'rgba(20,22,29,0.045)', drawTicks: false }, border: { display: false },
+            grid: { color: gridColor, drawTicks: false }, border: { display: false },
             ticks: {
               color: 'rgba(154,161,174,0.9)', font: { family: 'Inter', size: 10.5, weight: 500 },
               padding: 10, maxTicksLimit: 5,
@@ -180,7 +186,7 @@ export default function Overview({ userId }: Props) {
       },
     })
     return () => { chartRef.current?.destroy(); chartRef.current = null }
-  }, [rows, isTraffic, hasData, planLabel])
+  }, [rows, isTraffic, hasData, planLabel, theme])
 
   const active = subscription && subscription.status === 'active'
   const limit = subscription?.bandwidth_limit_gb ?? 0
