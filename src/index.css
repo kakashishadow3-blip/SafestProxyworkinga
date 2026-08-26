@@ -1247,3 +1247,7 @@ pre.proxy-output:empty::before{
 /* table wrappers — horizontal scroll on small screens */
 .api-table-wrap,.inv-table-wrap{overflow-x:auto;}
 .api-table-wrap table,.inv-table-wrap table{min-width:640px;}
+
+/* ── Cloudflare Turnstile captcha on auth pages ── */
+.turnstile-box{display:flex;justify-content:center;margin:2px 0 18px;min-height:65px;}
+.turnstile-box iframe{border-radius:10px;}
