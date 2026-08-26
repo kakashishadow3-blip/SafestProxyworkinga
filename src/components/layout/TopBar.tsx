@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
+import { useTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 import type { Subscription } from '@/types'
 
@@ -19,6 +20,7 @@ interface Props {
 
 export default function TopBar({ subscription }: Props) {
   const { profile, user, signOut } = useAuth()
+  const [theme, toggleTheme] = useTheme()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
@@ -53,6 +55,19 @@ export default function TopBar({ subscription }: Props) {
         <div className="tb-sub">{sub}</div>
       </div>
       <div className="tb-right">
+        <button
+          className="tb-icon-btn"
+          type="button"
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          onClick={toggleTheme}
+        >
+          {theme === 'dark' ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="4.2" /><path d="M12 2v2.5M12 19.5V22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M2 12h2.5M19.5 12H22M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" /></svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
+          )}
+        </button>
         <span className={cn('badge-plan', !active && 'warn')} style={{ textTransform: 'uppercase' }}>{badgeText}</span>
 
         <div className={cn('user-menu-wrap', menuOpen && 'open')} ref={menuRef}>
