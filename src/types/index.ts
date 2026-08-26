@@ -1,0 +1,113 @@
+export interface Profile {
+  id: string
+  email: string
+  username: string | null
+  is_admin: boolean
+  created_at: string
+}
+
+export interface Plan {
+  id: string
+  name: string
+  price: number
+  bandwidth_gb: number
+  duration_days: number
+  created_at: string
+}
+
+export interface Subscription {
+  id: string
+  user_id: string
+  plan_id: string | null
+  status: 'active' | 'inactive' | 'expired' | 'suspended'
+  bandwidth_used_gb: number
+  bandwidth_limit_gb: number
+  start_date: string | null
+  expiry_date: string | null
+  created_at: string
+  plans?: Plan | null
+}
+
+export interface Order {
+  id: string
+  user_id: string
+  plan_id: string | null
+  amount: number
+  status: 'pending' | 'paid' | 'awaiting_topup' | 'active' | 'cancelled'
+  cryptomus_order_id: string | null
+  created_at: string
+  profiles?: { email: string; username: string | null } | null
+  plans?: { name: string; duration_days: number; bandwidth_gb: number } | null
+}
+
+export interface ProxyCredential {
+  id: string
+  user_id: string
+  dataimpulse_username: string | null
+  dataimpulse_password: string | null
+  host: string | null
+  port: number | null
+  status: 'active' | 'pending' | 'suspended'
+  created_at: string
+}
+
+export interface ContactRequest {
+  id: string
+  user_id: string | null
+  message: string
+  status: 'open' | 'resolved' | 'spam'
+  created_at: string
+  profiles?: { email: string } | null
+}
+
+export interface AuditLog {
+  id: string
+  admin_user_id: string
+  target_user_id: string
+  action: string
+  entity_type: string
+  entity_id: string
+  old_value: string | null
+  new_value: string | null
+  reason: string | null
+  created_at: string
+  admin?: { email: string } | null
+  target?: { email: string } | null
+}
+
+export interface ApiRequest {
+  id: string
+  user_id: string
+  purpose: string
+  team_size: string | null
+  integration: string
+  expected_volume: string | null
+  used_other_providers: boolean
+  recent_providers: string[]
+  notes: string | null
+  status: 'pending' | 'approved' | 'rejected'
+  created_at: string
+  profiles?: { email: string } | null
+}
+
+export interface ApiKey {
+  id: string
+  user_id: string
+  name: string
+  key_masked: string
+  key_hash: string
+  status: 'active' | 'idle' | 'revoked'
+  requests_count: number
+  created_at: string
+}
+
+export interface UsageStat {
+  id: string
+  user_id: string
+  subscription_id: string | null
+  date: string
+  traffic_gb: number
+  extra_traffic_gb: number
+  requests: number
+  created_at: string
+}
