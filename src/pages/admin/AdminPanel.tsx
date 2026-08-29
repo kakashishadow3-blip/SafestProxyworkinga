@@ -6,9 +6,10 @@ import { logAudit } from '@/lib/audit'
 import { cn, fmtDate } from '@/lib/utils'
 import { showToast } from '@/lib/toast'
 import { tierLong } from '@/lib/plans'
+import PlanManager from '@/pages/admin/PlanManager'
 import type { ApiRequest, ContactRequest, Order, Profile } from '@/types'
 
-type Tab = 'topups' | 'api' | 'contact' | 'users'
+type Tab = 'topups' | 'api' | 'contact' | 'users' | 'plans'
 
 const LOGO_URL = 'https://res.cloudinary.com/dhcryevaj/image/upload/v1785014439/Safestproxy_favicon_oknort.png'
 
@@ -169,7 +170,10 @@ export default function AdminPanel() {
           <button className={cn(tab === 'api' && 'active')} onClick={() => setTab('api')}>API Requests ({pendingApi.length})</button>
           <button className={cn(tab === 'contact' && 'active')} onClick={() => setTab('contact')}>Contact Requests ({openContacts.length})</button>
           <button className={cn(tab === 'users' && 'active')} onClick={() => setTab('users')}>Users ({users.length})</button>
+          <button className={cn(tab === 'plans' && 'active')} onClick={() => setTab('plans')}>Plans & Pricing</button>
         </div>
+
+        {tab === 'plans' && <PlanManager />}
 
         {tab === 'topups' && (
           <div className="admin-section">
