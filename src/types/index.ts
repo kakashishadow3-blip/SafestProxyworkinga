@@ -12,6 +12,7 @@ export interface Plan {
   price: number
   bandwidth_gb: number
   duration_days: number
+  is_active?: boolean
   created_at: string
 }
 
