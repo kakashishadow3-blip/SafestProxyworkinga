@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import jsPDF from 'jspdf'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -50,25 +50,90 @@ export default function Billing({ userId }: Props) {
   const [activeInvoice, setActiveInvoice] = useState<Invoice | null>(null)
   const [pdfBusy, setPdfBusy] = useState(false)
   const [pdfLbl, setPdfLbl] = useState('Download PDF')
+  const [payingId, setPayingId] = useState<string | null>(null)
+  const [verifyState, setVerifyState] = useState<'idle' | 'checking' | 'waiting'>('idle')
+  const [searchParams, setSearchParams] = useSearchParams()
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (!uid) return
-    ;(async () => {
-      setLoading(true)
-      const [{ data: prof }, { data: sub }, { data: ords }] = await Promise.all([
-        readOnly
-          ? supabase.from('profiles').select('*').eq('id', uid).maybeSingle()
-          : Promise.resolve({ data: ownProfile }),
-        supabase.from('subscriptions').select('*, plans(*)').eq('user_id', uid).eq('status', 'active')
-          .order('expiry_date', { ascending: false }).limit(1).maybeSingle(),
-        supabase.from('orders').select('*, plans(*)').eq('user_id', uid).order('created_at', { ascending: false }),
-      ])
-      setProfile((prof as Profile | null) ?? null)
-      setSubscription((sub as Subscription | null) ?? null)
-      setOrders((ords as Order[] | null) ?? [])
-      setLoading(false)
-    })()
+    setLoading(true)
+    const [{ data: prof }, { data: sub }, { data: ords }] = await Promise.all([
+      readOnly
+        ? supabase.from('profiles').select('*').eq('id', uid).maybeSingle()
+        : Promise.resolve({ data: ownProfile }),
+      supabase.from('subscriptions').select('*, plans(*)').eq('user_id', uid).eq('status', 'active')
+        .order('expiry_date', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('orders').select('*, plans(*)').eq('user_id', uid).order('created_at', { ascending: false }),
+    ])
+    setProfile((prof as Profile | null) ?? null)
+    setSubscription((sub as Subscription | null) ?? null)
+    setOrders((ords as Order[] | null) ?? [])
+    setLoading(false)
   }, [uid, readOnly, ownProfile])
+
+  useEffect(() => { loadData() }, [loadData])
+
+  /* Return from Cryptomus checkout → poll until the payment is confirmed, then refresh */
+  useEffect(() => {
+    const payment = searchParams.get('payment')
+    const orderId = searchParams.get('order_id')
+    if (payment !== 'success' || !orderId || !uid || readOnly) return
+    let stopped = false
+    let tries = 0
+    setVerifyState('checking')
+    const finish = (state: 'idle' | 'waiting') => {
+      setVerifyState(state)
+      setSearchParams({}, { replace: true })
+    }
+    const tick = async () => {
+      if (stopped) return
+      tries += 1
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const res = await fetch(`/api/payment-status?order_id=${encodeURIComponent(orderId)}`, {
+          headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
+        })
+        const json = await res.json().catch(() => null)
+        if (json?.status === 'paid') {
+          stopped = true
+          finish('idle')
+          showToast('ok', 'Payment confirmed', 'Your plan is now active — the invoice is ready below.')
+          await loadData()
+          return
+        }
+      } catch { /* keep polling */ }
+      if (stopped) return
+      if (tries >= 20) {
+        finish('waiting')
+        showToast('ok', 'Payment received', 'Confirmation is in progress — your plan will activate automatically within a few minutes.')
+        return
+      }
+      setTimeout(tick, 3000)
+    }
+    tick()
+    return () => { stopped = true }
+  }, [searchParams, uid, readOnly, loadData, setSearchParams])
+
+  /* Resume payment for an unpaid order */
+  const payNow = async (orderId: string) => {
+    if (payingId) return
+    setPayingId(orderId)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Please sign in again to continue.')
+      const res = await fetch('/api/create-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ order_id: orderId }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.url) throw new Error(json?.error || 'Could not start the payment.')
+      window.location.href = json.url as string
+    } catch (e) {
+      setPayingId(null)
+      showToast('err', 'Payment could not be started', e instanceof Error ? e.message : undefined)
+    }
+  }
 
   const active = !!subscription && subscription.status === 'active'
   const plan = subscription?.plans ?? null
@@ -103,6 +168,7 @@ export default function Billing({ userId }: Props) {
   const totalSpent = orders.filter(o => o.status === 'paid' || o.status === 'active').reduce((a, o) => a + Number(o.amount), 0)
   const paidOrders = orders.filter(o => o.status === 'paid' || o.status === 'active')
   const lastPaid = paidOrders[0]
+  const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'awaiting_topup')
 
   const downloadInvoicePdf = () => {
     const inv = activeInvoice
@@ -345,6 +411,18 @@ export default function Billing({ userId }: Props) {
         </div>
       </div>
 
+      {verifyState === 'checking' && (
+        <div className="pay-verifying">
+          <span className="gen-spinner" />
+          <span><strong>Confirming your payment…</strong> Cryptomus is verifying the transaction on-chain. This usually takes a few seconds — your plan will activate automatically.</span>
+        </div>
+      )}
+      {verifyState === 'waiting' && (
+        <div className="pay-verifying">
+          <span><strong>Payment received.</strong> Confirmation is still in progress — your plan will activate automatically once Cryptomus finalizes it. No need to pay again.</span>
+        </div>
+      )}
+
       <div className="panel" style={{ marginBottom: 24 }}>
         <div className="cur-plan-top">
           <div>
@@ -395,6 +473,32 @@ export default function Billing({ userId }: Props) {
           <div className="lbl">Payment status · {orders.length === 0 ? 'no payments yet' : orders.some(o => o.status === 'awaiting_topup' || o.status === 'pending') ? 'awaiting top-up' : 'all settled'}</div>
         </div>
       </div>
+
+      {!readOnly && !loading && pendingOrders.length > 0 && (
+        <div className="panel pay-pending-panel">
+          <div className="panel-head">
+            <div><h3>Pending payments</h3><p>Complete the payment to activate your plan instantly.</p></div>
+          </div>
+          {pendingOrders.map(o => (
+            <div className="pay-pending-row" key={o.id}>
+              <div className="pay-pending-info">
+                <div className="pay-pending-name">{o.plans?.name ?? 'Plan'}</div>
+                <div className="pay-pending-meta">Created {fmtDate(new Date(o.created_at))} · unpaid</div>
+              </div>
+              <span className="pay-pending-amount">${Number(o.amount).toFixed(2)}</span>
+              <button
+                className={cn('btn btn-primary btn-sm', payingId === o.id && 'loading')}
+                type="button"
+                disabled={!!payingId}
+                onClick={() => payNow(o.id)}
+              >
+                <span className="gen-spinner" />
+                <span>{payingId === o.id ? 'Connecting…' : 'Pay now'}</span>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="panel">
         <div className="panel-head">
