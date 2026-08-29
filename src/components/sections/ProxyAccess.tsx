@@ -10,7 +10,8 @@ import type { ProxyCredential, Subscription } from '@/types'
 
 const GATEWAY = 'gate.safestproxy.com'
 const MAIN_PORT = 7777
-const STICKY_START_PORT = 11001
+const STICKY_START_PORT = 10001
+const ROTATING_PORT = 823
 
 interface Generated {
   lines: string[]
@@ -33,8 +34,8 @@ export default function ProxyAccess({ userId }: Props) {
   const [creatingCreds, setCreatingCreds] = useState(false)
 
   const [protocol, setProtocol] = useState('HTTP')
-  const [country, setCountry] = useState<{ code: string; name: string }>({ code: 'MIX', name: 'Random Country' })
-  const [sticky, setSticky] = useState(true)
+  const [countries, setCountries] = useState<{ codes: string[]; names: string[] }>({ codes: [], names: [] })
+  const [session, setSession] = useState<'sticky' | 'rotating'>('sticky')
   const [qty, setQty] = useState('10')
   const [qtyError, setQtyError] = useState('')
   const [generated, setGenerated] = useState<Generated | null>(null)
@@ -114,22 +115,25 @@ export default function ProxyAccess({ userId }: Props) {
     const credUser = creds.dataimpulse_username
     const credPass = creds.dataimpulse_password
     const credHost = creds.host || GATEWAY
-    const credPort = creds.port || MAIN_PORT
 
     setGenerating(true)
     setTimeout(() => {
       try {
-        const cc = country.code
-        const locUser = cc === 'MIX' ? credUser : `${credUser}__cr.${cc.toLowerCase()}`
+        const codes = countries.codes.map(c => c.toLowerCase())
+        const crPart = codes.length ? `__cr.${codes.join(',')}` : ''
+        const locUser = `${credUser}${crPart}`
+        const countryLabel = codes.length ? countries.names.join(', ') : 'Random Country'
         const lines: string[] = new Array(q)
         for (let i = 0; i < q; i++) {
-          const port = sticky ? STICKY_START_PORT + i : credPort
+          // Sticky → sequential port per proxy (same IP per port for the session)
+          // Rotating → one fixed port; the gateway rotates the IP on every request
+          const port = session === 'sticky' ? STICKY_START_PORT + i : ROTATING_PORT
           lines[i] = `${credHost}:${port}:${locUser}:${credPass}`
         }
         setGenerated({
           lines,
-          meta: `${q.toLocaleString()} ${q === 1 ? 'proxy' : 'proxies'} · ${protocol} · ${country.name}`,
-          filename: `safestproxy-${cc.toLowerCase()}-${q}-proxies.txt`,
+          meta: `${q.toLocaleString()} ${q === 1 ? 'proxy' : 'proxies'} · ${protocol} · ${session === 'sticky' ? 'Sticky' : 'Rotating'} · ${countryLabel}`,
+          filename: `safestproxy-${codes.length ? codes.join('-') : 'mix'}-${session}-${q}-proxies.txt`,
         })
         setStale(false)
         outputRef.current?.scrollTo({ top: 0 })
@@ -202,14 +206,18 @@ export default function ProxyAccess({ userId }: Props) {
           </div>
           <div className="form-row" style={{ marginBottom: 0 }}>
             <label>Location</label>
-            <CountrySelect value={country.code} onChange={(code, name) => { setCountry({ code, name }); markDirty() }} />
+            <CountrySelect value={countries.codes} onChange={(codes, names) => { setCountries({ codes, names }); markDirty() }} />
           </div>
           <div className="form-row" style={{ marginBottom: 0 }}>
             <label>Session</label>
-            <div className="static-field">
-              Sticky Session
-              <span className="help" aria-label="Session info">i<span className="tooltip">Want to use rotation on every request? Contact our support team instantly — no need to wait.</span></span>
-            </div>
+            <CustomSelect
+              options={[
+                { value: 'sticky', label: 'Sticky Session' },
+                { value: 'rotating', label: 'Rotating Session' },
+              ]}
+              value={session}
+              onChange={v => { setSession(v as 'sticky' | 'rotating'); markDirty() }}
+            />
           </div>
           <div className="form-row" style={{ marginBottom: 0 }}>
             <label>Gateway</label>
@@ -323,19 +331,21 @@ export default function ProxyAccess({ userId }: Props) {
             <div className="form-row">
               <div className="toggle-row">
                 <div>
-                  <label style={{ marginBottom: 3 }}>Sticky session
-                    <span className="help">?<span className="tooltip">Sticky sessions keep the same IP for the whole session. Each entry gets its own sequential port. Disable for rotation on every request via the main gateway port.</span></span>
+                  <label style={{ marginBottom: 3 }}>
+                    {session === 'sticky' ? 'Sticky session' : 'Rotating session'}
+                    <span className="help">?<span className="tooltip">
+                      {session === 'sticky'
+                        ? 'Sticky sessions keep the same IP for the whole session. Each proxy in the pool gets its own sequential port (starting at 10001). Switch the Session option above for rotation on every request.'
+                        : 'Rotating sessions give you a new IP on every request. Every proxy in the pool uses the same port (823) — rotation happens automatically at the gateway.'}
+                    </span></span>
                   </label>
-                  <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Keeps the same IP for the session duration</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+                    {session === 'sticky'
+                      ? `Same IP per session · sequential ports from ${STICKY_START_PORT}`
+                      : `New IP on every request · fixed port ${ROTATING_PORT}`}
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  className={cn('switch', sticky && 'on')}
-                  role="switch"
-                  aria-checked={sticky}
-                  aria-label="Sticky session"
-                  onClick={() => { setSticky(s => !s); markDirty() }}
-                />
+                <span className="gen-meta-chip live">{session === 'sticky' ? 'STICKY' : 'ROTATING'}</span>
               </div>
             </div>
 
