@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { showToast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
+import PaymentModal from '@/components/ui/PaymentModal'
 import {
   PRODUCT_META, PRODUCT_ORDER, ProductKey, UPeriod, U_PERIOD_LABELS,
   productOf, tierLabel, tierLong, threadsOf, periodOf, POPULAR_TIER_GB,
@@ -25,7 +25,6 @@ export default function Plans({ userId }: Props) {
   const { user } = useAuth()
   const uid = userId ?? user?.id
   const readOnly = !!userId
-  const navigate = useNavigate()
 
   const [plans, setPlans] = useState<Plan[]>([])
   const [loading, setLoading] = useState(true)
@@ -33,13 +32,14 @@ export default function Plans({ userId }: Props) {
   const [tier, setTier] = useState<number>(POPULAR_TIER_GB)
   const [period, setPeriod] = useState<UPeriod>('day')
   const [threads, setThreads] = useState(100)
-  const [choosing, setChoosing] = useState(false)
+  const [payOpen, setPayOpen] = useState(false)
+  const [payBusy, setPayBusy] = useState(false)
   const [priceAnim, setPriceAnim] = useState(false)
 
   useEffect(() => {
     ;(async () => {
       const { data } = await supabase.from('plans').select('*').order('price', { ascending: true })
-      setPlans((data as Plan[] | null) ?? [])
+      setPlans(((data as Plan[] | null) ?? []).filter(p => p.is_active !== false))
       setLoading(false)
     })()
   }, [])
@@ -72,36 +72,39 @@ export default function Plans({ userId }: Props) {
     setTimeout(() => { fn(); setPriceAnim(false) }, 120)
   }
 
-  const choosePlan = async () => {
+  /* Choose plan → open the payment-method popup (Cryptomus checkout) */
+  const choosePlan = () => {
     if (readOnly || !uid) return
     if (!selectedPlan) {
       showToast('err', 'Plan unavailable', 'This combination is not available right now — please pick another tier.')
       return
     }
-    setChoosing(true)
-    const { data: existing } = await supabase
-      .from('orders').select('id')
-      .eq('user_id', uid).eq('plan_id', selectedPlan.id).eq('status', 'awaiting_topup')
-      .limit(1)
-    if (existing && existing.length > 0) {
-      setChoosing(false)
-      showToast('ok', 'Order already pending', 'You already have a pending top-up for this plan — see Billing.')
-      navigate('/billing')
-      return
+    setPayOpen(true)
+  }
+
+  const startCryptoPayment = async () => {
+    if (!selectedPlan || payBusy) return
+    setPayBusy(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setPayBusy(false)
+        setPayOpen(false)
+        showToast('err', 'Session expired', 'Please sign in again to continue.')
+        return
+      }
+      const res = await fetch('/api/create-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ plan_id: selectedPlan.id }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.url) throw new Error(json?.error || 'Could not start the payment.')
+      window.location.href = json.url as string
+    } catch (e) {
+      setPayBusy(false)
+      showToast('err', 'Payment could not be started', e instanceof Error ? e.message : undefined)
     }
-    const { error } = await supabase.from('orders').insert({
-      user_id: uid,
-      plan_id: selectedPlan.id,
-      amount: selectedPlan.price,
-      status: 'awaiting_topup',
-    })
-    setChoosing(false)
-    if (error) {
-      showToast('err', 'Could not create order', error.message)
-      return
-    }
-    showToast('ok', 'Plan selected', 'Your order is awaiting top-up. Track it in Billing — it activates once payment is confirmed.')
-    navigate('/billing')
   }
 
   return (
@@ -199,8 +202,8 @@ export default function Plans({ userId }: Props) {
               <span>{isUnlimited ? 'threads · unlimited traffic' : 'proxy traffic · monthly'}</span>
             </div>
             {!readOnly && (
-              <button className="pcard-cta" type="button" onClick={choosePlan} disabled={choosing || loading} style={{ border: 'none', cursor: 'pointer' }}>
-                <span>{choosing ? 'Creating order…' : 'Choose plan'}</span>
+              <button className="pcard-cta" type="button" onClick={choosePlan} disabled={payBusy || loading} style={{ border: 'none', cursor: 'pointer' }}>
+                <span>{payBusy ? 'Connecting…' : 'Choose plan'}</span>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
               </button>
             )}
@@ -215,6 +218,17 @@ export default function Plans({ userId }: Props) {
           </ul>
         </div>
       </div>
+
+      {selectedPlan && (
+        <PaymentModal
+          open={payOpen}
+          planName={selectedPlan.name}
+          price={Number(selectedPlan.price)}
+          busy={payBusy}
+          onClose={() => setPayOpen(false)}
+          onCrypto={startCryptoPayment}
+        />
+      )}
     </section>
   )
 }
