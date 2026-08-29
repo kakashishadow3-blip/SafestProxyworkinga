@@ -273,9 +273,27 @@ export default function ApiManagement({ userId }: Props) {
             </div>
             <div className="form-row" style={{ marginBottom: 0 }}>
               <label>Have you recently used API/proxy services from other providers?</label>
-              <div className="api-check-grid">
-                <label className="api-check"><input type="radio" name="apiReqUsed" value="yes" checked={usedOther === 'yes'} onChange={() => setUsedOther('yes')} />Yes</label>
-                <label className="api-check"><input type="radio" name="apiReqUsed" value="no" checked={usedOther === 'no'} onChange={() => { setUsedOther('no'); setProviders([]); setErrProviders(false) }} />No</label>
+              <div className="yn-seg" role="radiogroup" aria-label="Used other providers">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={usedOther === 'yes'}
+                  className={cn('yn-opt', usedOther === 'yes' && 'on')}
+                  onClick={() => setUsedOther('yes')}
+                >
+                  <span className="yn-dot" />
+                  Yes
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={usedOther === 'no'}
+                  className={cn('yn-opt', usedOther === 'no' && 'on')}
+                  onClick={() => { setUsedOther('no'); setProviders([]); setErrProviders(false) }}
+                >
+                  <span className="yn-dot" />
+                  No
+                </button>
               </div>
             </div>
           </div>
@@ -283,12 +301,24 @@ export default function ApiManagement({ userId }: Props) {
           {usedOther === 'yes' && (
             <div className="form-row">
               <label>Which providers have you used recently?</label>
-              <div className="api-check-grid">
-                {PROVIDERS.map(p => (
-                  <label key={p} className="api-check">
-                    <input type="checkbox" checked={providers.includes(p)} onChange={() => toggleProvider(p)} />{p}
-                  </label>
-                ))}
+              <div className="prov-grid">
+                {PROVIDERS.map(p => {
+                  const on = providers.includes(p)
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      aria-pressed={on}
+                      className={cn('prov-chip', on && 'on')}
+                      onClick={() => toggleProvider(p)}
+                    >
+                      <span className="prov-box" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2"><path d="M4 12l5 5L20 6" /></svg>
+                      </span>
+                      {p}
+                    </button>
+                  )
+                })}
               </div>
               <div className={cn('api-field-error', errProviders && 'show')}>Please select at least one provider, or switch your answer above to “No”.</div>
             </div>
