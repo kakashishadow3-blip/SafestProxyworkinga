@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import CustomSelect from '@/components/ui/CustomSelect'
 import CountrySelect from '@/components/ui/CountrySelect'
 import { safeCopy, randToken, cn } from '@/lib/utils'
+import { subIsActive, subIsExpired, subIsExhausted } from '@/lib/subscription'
 import { showToast } from '@/lib/toast'
 import type { ProxyCredential, Subscription } from '@/types'
 
@@ -52,8 +53,8 @@ export default function ProxyAccess({ userId }: Props) {
     ;(async () => {
       setLoading(true)
       const [{ data: sub }, { data: cred }] = await Promise.all([
-        supabase.from('subscriptions').select('*, plans(*)').eq('user_id', uid).eq('status', 'active')
-          .order('expiry_date', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('subscriptions').select('*, plans(*)').eq('user_id', uid)
+          .order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('proxy_credentials').select('*').eq('user_id', uid).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       ])
       setSubscription((sub as Subscription | null) ?? null)
@@ -62,11 +63,13 @@ export default function ProxyAccess({ userId }: Props) {
     })()
   }, [uid])
 
-  const active = !!subscription && subscription.status === 'active'
-  const limit = subscription?.bandwidth_limit_gb ?? 0
-  const left = Math.max(0, limit - (subscription?.bandwidth_used_gb ?? 0))
-  /* Gate on loading so the empty-balance banner never flashes while data is being fetched */
-  const noFunds = !loading && (!active || (limit > 0 && left <= 0))
+  const active = subIsActive(subscription)
+  const expired = subIsExpired(subscription)
+  const exhausted = subIsExhausted(subscription)
+  /* Gate on loading so banners never flash while data is being fetched */
+  const showExpired = !loading && expired
+  const showExhausted = !loading && exhausted
+  const showNoPlan = !loading && !subscription
 
   const markDirty = () => { if (generated) setStale(true) }
 
@@ -104,7 +107,11 @@ export default function ProxyAccess({ userId }: Props) {
     if (q === null) return
     setGenError('')
 
-    if (!active || (limit > 0 && left <= 0)) {
+    if (expired) {
+      setGenError('Your plan has expired. Renew or upgrade your plan to continue generating proxies.')
+      return
+    }
+    if (!active || exhausted) {
       setGenError("You don't have any funds/bandwidth available.")
       return
     }
@@ -177,7 +184,21 @@ export default function ProxyAccess({ userId }: Props) {
 
   return (
     <section className="section active">
-      {noFunds && (
+      {showExpired && (
+        <div className="warn-banner">
+          {readOnly
+            ? "This user's plan has expired — proxy generation is disabled."
+            : (<>Your plan has expired. <Link to="/plans">Renew or upgrade your plan</Link> to continue using the residential proxy, or <a href="mailto:support@safestproxy.com">contact support</a> for an extension.</>)}
+        </div>
+      )}
+      {showExhausted && (
+        <div className="warn-banner">
+          {readOnly
+            ? "This user's bandwidth is fully used — proxy generation is disabled."
+            : (<>Your plan's bandwidth is fully used. <Link to="/plans">Upgrade your plan</Link> to keep generating proxies.</>)}
+        </div>
+      )}
+      {showNoPlan && (
         <div className="warn-banner">
           Your balance is empty! {readOnly ? 'The user needs to refill their balance' : (<Link to="/billing">Refill your balance</Link>)} to use the residential proxy.
         </div>
