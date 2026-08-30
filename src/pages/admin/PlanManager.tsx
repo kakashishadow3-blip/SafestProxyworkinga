@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { logAudit } from '@/lib/audit'
 import { showToast } from '@/lib/toast'
 import { cn, fmtDate } from '@/lib/utils'
-import { productOf, PRODUCT_META, tierLong } from '@/lib/plans'
+import { productOf, PRODUCT_META, PRODUCT_ORDER, tierLong } from '@/lib/plans'
 import type { Plan } from '@/types'
 
 interface FormState {
@@ -100,6 +100,45 @@ export default function PlanManager() {
     setBusyId(null)
   }
 
+  /* Group plans by product category for easier management */
+  const groups = PRODUCT_ORDER
+    .map(k => ({ key: k, list: plans.filter(p => productOf(p.name) === k) }))
+    .filter(g => g.list.length > 0)
+
+  const renderRow = (p: Plan) => {
+    const hidden = p.is_active === false
+    return (
+      <tr key={p.id} style={hidden ? { opacity: 0.55 } : undefined}>
+        <td style={{ fontWeight: 600, color: 'var(--text-hi)' }}>{p.name}</td>
+        <td className="mono" style={{ fontWeight: 700, color: 'var(--text-hi)' }}>${Number(p.price).toFixed(2)}</td>
+        <td>{p.bandwidth_gb > 0 ? tierLong(p.bandwidth_gb) : 'Unlimited'}</td>
+        <td>{p.duration_days} days</td>
+        <td>
+          <button
+            className={cn('tag dot', hidden ? 'warn' : 'ok')}
+            type="button"
+            style={{ border: 'none', cursor: 'pointer', textTransform: 'uppercase' }}
+            disabled={busyId === p.id}
+            onClick={() => toggleActive(p)}
+            title={hidden ? 'Hidden from users — click to enable' : 'Visible to users — click to hide'}
+          >
+            {hidden ? 'Hidden' : 'Live'}
+          </button>
+        </td>
+        <td className="mono" style={{ fontSize: 12 }}>{p.created_at ? fmtDate(new Date(p.created_at)) : '—'}</td>
+        <td style={{ textAlign: 'right' }}>
+          <div className="admin-actions" style={{ justifyContent: 'flex-end' }}>
+            <button className="btn btn-primary btn-sm" type="button" disabled={busyId === p.id}
+              onClick={() => setForm({ id: p.id, name: p.name, price: String(Number(p.price)), bandwidth_gb: String(p.bandwidth_gb), duration_days: String(p.duration_days) })}>
+              Edit
+            </button>
+            <button className="btn btn-ghost btn-sm" type="button" disabled={busyId === p.id} onClick={() => remove(p)}>Delete</button>
+          </div>
+        </td>
+      </tr>
+    )
+  }
+
   return (
     <div className="admin-section">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', marginBottom: 18 }}>
@@ -149,47 +188,22 @@ export default function PlanManager() {
       )}
 
       {loading ? <div className="empty">Loading plans…</div> : plans.length === 0 ? <div className="empty">No plans yet.</div> : (
-        <table className="admin-table">
-          <thead>
-            <tr><th>Plan</th><th>Product</th><th>Price</th><th>Traffic</th><th>Duration</th><th>Status</th><th>Created</th><th style={{ textAlign: 'right' }}>Actions</th></tr>
-          </thead>
-          <tbody>
-            {plans.map(p => {
-              const hidden = p.is_active === false
-              return (
-                <tr key={p.id} style={hidden ? { opacity: 0.55 } : undefined}>
-                  <td style={{ fontWeight: 600, color: 'var(--text-hi)' }}>{p.name}</td>
-                  <td>{PRODUCT_META[productOf(p.name)].name}</td>
-                  <td className="mono" style={{ fontWeight: 700, color: 'var(--text-hi)' }}>${Number(p.price).toFixed(2)}</td>
-                  <td>{p.bandwidth_gb > 0 ? tierLong(p.bandwidth_gb) : 'Unlimited'}</td>
-                  <td>{p.duration_days} days</td>
-                  <td>
-                    <button
-                      className={cn('tag dot', hidden ? 'warn' : 'ok')}
-                      type="button"
-                      style={{ border: 'none', cursor: 'pointer', textTransform: 'uppercase' }}
-                      disabled={busyId === p.id}
-                      onClick={() => toggleActive(p)}
-                      title={hidden ? 'Hidden from users — click to enable' : 'Visible to users — click to hide'}
-                    >
-                      {hidden ? 'Hidden' : 'Live'}
-                    </button>
-                  </td>
-                  <td className="mono" style={{ fontSize: 12 }}>{p.created_at ? fmtDate(new Date(p.created_at)) : '—'}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <div className="admin-actions" style={{ justifyContent: 'flex-end' }}>
-                      <button className="btn btn-primary btn-sm" type="button" disabled={busyId === p.id}
-                        onClick={() => setForm({ id: p.id, name: p.name, price: String(Number(p.price)), bandwidth_gb: String(p.bandwidth_gb), duration_days: String(p.duration_days) })}>
-                        Edit
-                      </button>
-                      <button className="btn btn-ghost btn-sm" type="button" disabled={busyId === p.id} onClick={() => remove(p)}>Delete</button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        groups.map(g => (
+          <div className="plm-group" key={g.key}>
+            <div className="plm-group-head">
+              <h3>{PRODUCT_META[g.key].name}</h3>
+              <span className="plm-group-count">{g.list.length} plan{g.list.length === 1 ? '' : 's'}</span>
+            </div>
+            <table className="admin-table">
+              <thead>
+                <tr><th>Plan</th><th>Price</th><th>Traffic</th><th>Duration</th><th>Status</th><th>Created</th><th style={{ textAlign: 'right' }}>Actions</th></tr>
+              </thead>
+              <tbody>
+                {g.list.map(renderRow)}
+              </tbody>
+            </table>
+          </div>
+        ))
       )}
     </div>
   )
