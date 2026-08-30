@@ -29,12 +29,14 @@ export default function ProxyAccess({ userId }: Props) {
   const uid = userId ?? user?.id
   const readOnly = !!userId
 
-  const [subscription, setSubscription] = useState<Subscription | null>(null)
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
+  const [selectedSubId, setSelectedSubId] = useState<string>('')
   const [creds, setCreds] = useState<ProxyCredential | null>(null)
   const [loading, setLoading] = useState(true)
   const [creatingCreds, setCreatingCreds] = useState(false)
 
   const [protocol, setProtocol] = useState('HTTP')
+  const [network, setNetwork] = useState('4g')
   const [countries, setCountries] = useState<{ codes: string[]; names: string[] }>({ codes: [], names: [] })
   const [session, setSession] = useState<'sticky' | 'rotating'>('sticky')
   const [qty, setQty] = useState('10')
@@ -52,24 +54,33 @@ export default function ProxyAccess({ userId }: Props) {
     if (!uid) return
     ;(async () => {
       setLoading(true)
-      const [{ data: sub }, { data: cred }] = await Promise.all([
+      const [{ data: subs }, { data: cred }] = await Promise.all([
         supabase.from('subscriptions').select('*, plans(*)').eq('user_id', uid)
-          .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+          .order('created_at', { ascending: false }),
         supabase.from('proxy_credentials').select('*').eq('user_id', uid).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       ])
-      setSubscription((sub as Subscription | null) ?? null)
+      const list = (subs as Subscription[] | null) ?? []
+      setSubscriptions(list)
+      /* default selection: first effectively-active plan, else latest row */
+      const firstActive = list.find(s => subIsActive(s)) ?? list[0]
+      setSelectedSubId(prev => (prev && list.some(s => s.id === prev) ? prev : firstActive?.id ?? ''))
       setCreds((cred as ProxyCredential | null) ?? null)
       setLoading(false)
     })()
   }, [uid])
 
+  /* Multi-plan model: the user picks WHICH plan to generate from */
+  const activeSubs = subscriptions.filter(s => subIsActive(s))
+  const subscription = subscriptions.find(s => s.id === selectedSubId) ?? activeSubs[0] ?? subscriptions[0] ?? null
   const active = subIsActive(subscription)
   const expired = subIsExpired(subscription)
   const exhausted = subIsExhausted(subscription)
+  const isMobilePlan = (subscription?.plans?.name ?? '').startsWith('Mobile')
+  const hasAnyPlan = subscriptions.length > 0
   /* Gate on loading so banners never flash while data is being fetched */
-  const showExpired = !loading && expired
-  const showExhausted = !loading && exhausted
-  const showNoPlan = !loading && !subscription
+  const showExpired = !loading && hasAnyPlan && activeSubs.length === 0
+  const showExhausted = !loading && active && exhausted
+  const showNoPlan = !loading && !hasAnyPlan
 
   const markDirty = () => { if (generated) setStale(true) }
 
@@ -131,6 +142,8 @@ export default function ProxyAccess({ userId }: Props) {
         const crPart = codes.length ? `__cr.${codes.join(',')}` : ''
         const locUser = `${credUser}${crPart}`
         const countryLabel = codes.length ? countries.names.join(', ') : 'Random Country'
+        const planLabel = subscription?.plans?.name ?? 'Plan'
+        const netLabel = isMobilePlan ? ` · ${network.toUpperCase()}` : ''
         const lines: string[] = new Array(q)
         for (let i = 0; i < q; i++) {
           // Sticky → sequential port per proxy (same IP per port for the session)
@@ -140,8 +153,8 @@ export default function ProxyAccess({ userId }: Props) {
         }
         setGenerated({
           lines,
-          meta: `${q.toLocaleString()} ${q === 1 ? 'proxy' : 'proxies'} · ${protocol} · ${session === 'sticky' ? 'Sticky' : 'Rotating'} · ${countryLabel}`,
-          filename: `safestproxy-${codes.length ? codes.join('-') : 'mix'}-${session}-${q}-proxies.txt`,
+          meta: `${q.toLocaleString()} ${q === 1 ? 'proxy' : 'proxies'} · ${planLabel} · ${protocol} · ${session === 'sticky' ? 'Sticky' : 'Rotating'}${netLabel} · ${countryLabel}`,
+          filename: `safestproxy-${codes.length ? codes.join('-') : 'mix'}-${session}${isMobilePlan ? '-' + network : ''}-${q}-proxies.txt`,
         })
         setStale(false)
         outputRef.current?.scrollTo({ top: 0 })
@@ -213,6 +226,38 @@ export default function ProxyAccess({ userId }: Props) {
           </div>
         </div>
 
+        {/* Multi-plan picker — every active plan can be selected for generation */}
+        {hasAnyPlan && (
+          <div className="plan-pick-row">
+            <div className="form-row" style={{ marginBottom: 0, flex: 1, minWidth: 220 }}>
+              <label>Select plan</label>
+              <CustomSelect
+                options={subscriptions.map(s => ({
+                  value: s.id,
+                  label: `${s.plans?.name ?? 'Plan'}${subIsActive(s) ? '' : subIsExpired(s) ? ' (expired)' : ''}`,
+                }))}
+                value={selectedSubId}
+                onChange={v => { setSelectedSubId(v); markDirty() }}
+                emptyMsg="You don't have any plans yet."
+              />
+            </div>
+            {subscription && active && (
+              <div className="plan-pick-usage">
+                <span className="mono">
+                  {subscription.bandwidth_limit_gb > 0
+                    ? `${subscription.bandwidth_used_gb.toFixed(1)} / ${subscription.bandwidth_limit_gb} GB used`
+                    : 'Unlimited traffic'}
+                </span>
+                {subscription.bandwidth_limit_gb > 0 && (
+                  <div className="plan-pick-bar">
+                    <div className="plan-pick-bar-fill" style={{ width: `${Math.min(100, (subscription.bandwidth_used_gb / subscription.bandwidth_limit_gb) * 100)}%` }} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="field-grid cols-4">
           <div className="form-row" style={{ marginBottom: 0 }}>
             <label>Protocol</label>
@@ -245,6 +290,23 @@ export default function ProxyAccess({ userId }: Props) {
             <label>Gateway</label>
             <div className="static-field">DNS Hostname</div>
           </div>
+          {isMobilePlan && (
+            <div className="form-row" style={{ marginBottom: 0 }}>
+              <label>
+                Network
+                <span className="help">?<span className="tooltip">Mobile plans run on real carrier networks — pick the network type your targets expect. 4G/LTE covers most use cases; 5G gives the highest trust score.</span></span>
+              </label>
+              <CustomSelect
+                options={[
+                  { value: '4g', label: '4G / LTE' },
+                  { value: '5g', label: '5G' },
+                  { value: '3g', label: '3G' },
+                ]}
+                value={network}
+                onChange={v => { setNetwork(v); markDirty() }}
+              />
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
