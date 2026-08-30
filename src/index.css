@@ -1665,3 +1665,93 @@ html,body{overflow-x:hidden;}
 }
 .plm-group-head h3{font-size:16px;font-weight:800;color:var(--text-hi);margin:0;}
 .plm-group-count{font-size:11.5px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
+
+/* ── sidebar dropdown menus (Plans / Help Center) ─────────────── */
+.nav-toggle{
+  width:100%;background:none;border:none;text-align:left;
+  font-family:inherit;
+}
+.nav-toggle .nav-chevron{
+  width:16px;height:16px;margin-left:auto;flex:none;
+  transition:transform var(--ease);color:var(--text-dim);
+}
+.nav-toggle.open .nav-chevron{transform:rotate(180deg);color:var(--cyan);}
+.nav-sub{
+  overflow:hidden;max-height:0;opacity:0;
+  transition:max-height .28s ease,opacity .22s ease;
+}
+.nav-sub.show{max-height:340px;opacity:1;}
+.nav-sub-item{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 18px 10px 53px;margin:1px 0;
+  border-radius:var(--r-sm);
+  font-size:13.5px;font-weight:600;color:var(--text-mid);
+  cursor:pointer;text-decoration:none;position:relative;
+  transition:background var(--ease),color var(--ease);
+  user-select:none;
+}
+.nav-sub-item::before{
+  content:'';position:absolute;left:33px;top:50%;transform:translateY(-50%);
+  width:5px;height:5px;border-radius:99px;background:var(--text-dim);opacity:.6;
+  transition:background var(--ease),opacity var(--ease);
+}
+.nav-sub-item:hover{background:#F4F6F9;color:var(--text-hi);}
+.nav-sub-item:hover::before{background:var(--cyan);opacity:1;}
+.nav-sub-item.active{background:var(--cyan-soft);color:var(--cyan);}
+.nav-sub-item.active::before{background:var(--cyan);opacity:1;}
+.nav-sub-item .nav-ext{margin-left:auto;display:flex;}
+.nav-sub-item .nav-ext svg{width:13px;height:13px;color:var(--text-dim);}
+[data-theme="dark"] .nav-sub-item:hover{background:#1D222D;}
+
+/* multi-plan sidebar cards */
+.sb-plans-count{
+  font-family:var(--f-mono);font-size:9.5px;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--cyan);padding:0 6px 7px;
+}
+.sb-more-plans{
+  display:block;width:100%;background:none;border:none;cursor:pointer;
+  font-size:12px;font-weight:700;color:var(--cyan);text-align:center;
+  padding:7px 0 2px;font-family:inherit;
+}
+.sb-more-plans:hover{text-decoration:underline;}
+
+/* ── proxy generator: plan picker + per-plan usage ────────────── */
+.plan-pick-row{
+  display:flex;align-items:flex-end;gap:22px;flex-wrap:wrap;
+  margin-bottom:24px;padding:16px 18px;
+  border:1px solid var(--border-soft);border-radius:var(--r-sm);
+  background:var(--surface-soft, #F8FAFC);
+}
+.plan-pick-usage{
+  display:flex;flex-direction:column;gap:7px;min-width:190px;flex:none;
+  font-size:12.5px;color:var(--text-dim);padding-bottom:2px;
+}
+.plan-pick-bar{
+  height:6px;border-radius:99px;background:var(--border-soft);overflow:hidden;
+}
+.plan-pick-bar-fill{
+  height:100%;border-radius:99px;background:var(--cyan);
+  transition:width .35s ease;
+}
+[data-theme="dark"] .plan-pick-row{background:#141823;}
+
+/* ── my plans list (Overview / Billing / Admin) ───────────────── */
+.myplan-row{
+  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  padding:15px 4px;border-bottom:1px solid var(--border-soft);
+}
+.myplan-row:last-child{border-bottom:none;}
+.myplan-info{flex:1;min-width:180px;}
+.myplan-name{font-size:14.5px;font-weight:700;color:var(--text-hi);}
+.myplan-meta{font-size:12px;color:var(--text-dim);margin-top:3px;}
+.myplan-usage{flex:1.2;min-width:200px;display:flex;flex-direction:column;gap:6px;}
+.myplan-usage .mono{font-size:12px;color:var(--text-dim);}
+.myplan-bar{height:7px;border-radius:99px;background:var(--border-soft);overflow:hidden;}
+.myplan-bar-fill{height:100%;border-radius:99px;background:var(--cyan);transition:width .35s ease;}
+.myplan-bar-fill.warn{background:#F59E0B;}
+.myplan-bar-fill.bad{background:#EF4444;}
+.myplan-actions{display:flex;gap:8px;flex:none;}
+@media (max-width:560px){
+  .myplan-row{flex-direction:column;align-items:stretch;gap:10px;}
+  .myplan-actions{justify-content:flex-end;}
+}
