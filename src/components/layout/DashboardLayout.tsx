@@ -3,12 +3,14 @@ import { Outlet, useOutletContext } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
+import { subIsActive } from '@/lib/subscription'
 import type { Subscription } from '@/types'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
 
 export interface DashboardCtx {
-  subscription: Subscription | null
+  subscription: Subscription | null        // primary (first active, else latest)
+  subscriptions: Subscription[]            // ALL subscriptions (multi-plan model)
   refreshSubscription: () => Promise<void>
 }
 
@@ -19,7 +21,7 @@ export function useDashboard() {
 export default function DashboardLayout() {
   const { user, profile } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [subscription, setSubscription] = useState<Subscription | null>(null)
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
 
   const refreshSubscription = useCallback(async () => {
     if (!user) return
@@ -27,14 +29,14 @@ export default function DashboardLayout() {
       .from('subscriptions')
       .select('*, plans(*)')
       .eq('user_id', user.id)
-      .eq('status', 'active')
-      .order('expiry_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    setSubscription(data as Subscription | null)
+      .order('created_at', { ascending: false })
+    setSubscriptions((data as Subscription[] | null) ?? [])
   }, [user])
 
   useEffect(() => { refreshSubscription() }, [refreshSubscription])
+
+  /* Primary subscription for the top bar: first effectively-active plan, else the latest row */
+  const subscription = subscriptions.find(s => subIsActive(s)) ?? subscriptions[0] ?? null
 
   return (
     <>
@@ -47,13 +49,14 @@ export default function DashboardLayout() {
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         subscription={subscription}
+        subscriptions={subscriptions}
         isAdmin={!!profile?.is_admin}
       />
 
       <div className="main">
         <TopBar subscription={subscription} />
         <div className="content">
-          <Outlet context={{ subscription, refreshSubscription } satisfies DashboardCtx} />
+          <Outlet context={{ subscription, subscriptions, refreshSubscription } satisfies DashboardCtx} />
         </div>
       </div>
     </>
