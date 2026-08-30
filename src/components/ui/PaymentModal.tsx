@@ -83,7 +83,7 @@ export default function PaymentModal({ open, planName, price, busy, onClose, onC
             <span className="pm-radio"><span className="pm-radio-dot" /></span>
             <span className="pm-opt-main">
               <span className="pm-opt-name">Cryptocurrency</span>
-              <span className="pm-opt-sub">Powered by Cryptomus</span>
+              <span className="pm-opt-sub">Bitcoin, USDT, Ethereum & more</span>
             </span>
             <span className="pm-badges">
               <span className="pm-coin" style={{ background: '#26A17B' }}>₮</span>
