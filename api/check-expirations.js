@@ -33,7 +33,7 @@ export default async function handler(req, res) {
           planName: sub.plans ? sub.plans.name : 'Proxy plan',
           expiryDate: sub.expiry_date,
         })
-        const ok = await sendEmail({ to: sub.profiles.email, subject: mail.subject, html: mail.html })
+        const ok = await sendEmail({ to: sub.profiles.email, subject: mail.subject, html: mail.html, text: mail.text })
         if (ok) {
           await admin.from('subscriptions').update({ expiry_email_sent_at: now }).eq('id', sub.id)
           result.expiredEmailed += 1
@@ -63,7 +63,7 @@ export default async function handler(req, res) {
         planName: sub.plans ? sub.plans.name : 'Proxy plan',
         limitGb: limit,
       })
-      const ok = await sendEmail({ to: sub.profiles.email, subject: mail.subject, html: mail.html })
+      const ok = await sendEmail({ to: sub.profiles.email, subject: mail.subject, html: mail.html, text: mail.text })
       if (ok) {
         await admin.from('subscriptions').update({ exhausted_email_sent_at: now }).eq('id', sub.id)
         result.exhaustedEmailed += 1
