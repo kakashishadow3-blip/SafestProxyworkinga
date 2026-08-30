@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { showToast } from '@/lib/toast'
@@ -35,6 +36,14 @@ export default function Plans({ userId }: Props) {
   const [payOpen, setPayOpen] = useState(false)
   const [payBusy, setPayBusy] = useState(false)
   const [priceAnim, setPriceAnim] = useState(false)
+  const [searchParams] = useSearchParams()
+
+  /* Sidebar dropdown deep-links: /plans?product=mobile opens that product tab directly */
+  useEffect(() => {
+    const p = searchParams.get('product') as ProductKey | null
+    if (p && PRODUCT_ORDER.includes(p) && p !== product) setProduct(p)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   useEffect(() => {
     ;(async () => {
