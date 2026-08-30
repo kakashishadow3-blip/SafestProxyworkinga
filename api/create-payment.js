@@ -50,7 +50,9 @@ export default async function handler(req, res) {
     }
 
     const appUrl = (process.env.APP_URL || 'https://app.safestproxy.com').replace(/\/+$/, '')
-    const amount = Number(order.amount).toFixed(2)
+    /* Buyer covers the 2% network/processing fee on top of the plan price.
+       The order keeps the base plan price (invoices show the plan price). */
+    const amount = (Number(order.amount) * 1.02).toFixed(2)
 
     const result = await cryptomusRequest('/payment', {
       amount,
