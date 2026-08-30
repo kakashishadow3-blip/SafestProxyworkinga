@@ -6,9 +6,9 @@ import { useAuth } from '@/hooks/useAuth'
 import CustomSelect from '@/components/ui/CustomSelect'
 import DateRangePicker, { DateRange, defaultRange } from '@/components/ui/DateRangePicker'
 import { compactNum, dateKey } from '@/lib/utils'
-import { tierLabel, productOf, PRODUCT_META } from '@/lib/plans'
+import { tierLabel } from '@/lib/plans'
 import { useTheme, isDarkMode } from '@/lib/theme'
-import { subIsActive, subIsExpired, subIsExhausted } from '@/lib/subscription'
+import { subIsActive, subIsExhausted } from '@/lib/subscription'
 import type { Subscription, UsageStat } from '@/types'
 
 Chart.register(...registerables)
@@ -58,6 +58,25 @@ export default function Overview({ userId }: Props) {
 
   /* Primary plan for the metric cards: first effectively-active, else latest */
   const primarySub = allSubs.find(s => subIsActive(s)) ?? subscription
+
+  /* The plan currently being viewed (top dropdown drives metrics + chart together) */
+  const [viewSubId, setViewSubId] = useState('')
+  useEffect(() => {
+    if (!viewSubId && primarySub) setViewSubId(primarySub.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [primarySub?.id])
+  const viewSub = allSubs.find(s => s.id === viewSubId) ?? primarySub
+  const viewSubActive = subIsActive(viewSub)
+  const viewSubOptions = allSubs.map(s => ({
+    value: s.id,
+    label: `${s.plans?.name ?? 'Plan'}${subIsActive(s) ? '' : subIsExhausted(s) ? ' · data used up' : ' · expired'}`,
+  }))
+
+  /* Switching the viewed plan also switches the chart's plan filter */
+  const changeViewPlan = (id: string) => {
+    setViewSubId(id)
+    setPlanFilter(id)
+  }
 
   const planOptions = useMemo(() => {
     const opts = allSubs.map(s => ({ value: s.id, label: s.plans?.name ?? 'Plan' }))
@@ -192,76 +211,63 @@ export default function Overview({ userId }: Props) {
     return () => { chartRef.current?.destroy(); chartRef.current = null }
   }, [rows, isTraffic, hasData, planLabel, theme])
 
-  const active = subIsActive(primarySub)
   const activeCount = allSubs.filter(s => subIsActive(s)).length
-  const limit = primarySub?.bandwidth_limit_gb ?? 0
-  const used = primarySub?.bandwidth_used_gb ?? 0
+  const limit = viewSub?.bandwidth_limit_gb ?? 0
+  const used = viewSub?.bandwidth_used_gb ?? 0
   const left = Math.max(0, limit - used)
-  const pct = active && limit > 0 ? Math.min(100, (used / limit) * 100) : 0
 
   const rangeDays = Math.round((range.end.getTime() - range.start.getTime()) / 86400000) + 1
 
+  /* Display values follow the SELECTED plan (even expired ones show their final usage) */
+  const hasView = !!viewSub
+  const dispPct = hasView && limit > 0 ? Math.min(100, (used / limit) * 100) : 0
+
   return (
     <section className="section active">
+      {allSubs.length > 0 && (
+        <div className="ov-plan-bar">
+          <div className="ov-plan-bar-lbl">
+            Viewing plan
+            <span className="ov-plan-bar-sub">{activeCount} active · {allSubs.length} total</span>
+          </div>
+          <div className="ov-plan-bar-select">
+            <CustomSelect
+              options={viewSubOptions}
+              value={viewSub?.id ?? ''}
+              onChange={changeViewPlan}
+            />
+          </div>
+          {viewSub && (
+            <span className={`tag dot ${viewSubActive ? 'ok' : subIsExhausted(viewSub) ? 'warn' : 'bad'}`}>
+              {viewSubActive ? (subIsExhausted(viewSub) ? 'Data used up' : 'Active') : 'Expired'}
+            </span>
+          )}
+        </div>
+      )}
       <div className="metric-row">
         <div className="metric-card">
-          <div className="metric-eyebrow">Current Plan{activeCount > 1 ? ` · ${activeCount} active` : ''}</div>
-          <div className="metric-label">{active ? (primarySub?.plans?.name ?? 'Active') : 'Non-Active'}</div>
+          <div className="metric-eyebrow">{viewSubActive ? 'Current Plan' : 'Selected Plan'}{activeCount > 1 ? ` · ${activeCount} active` : ''}</div>
+          <div className="metric-label">{hasView ? (viewSub?.plans?.name ?? 'Plan') : 'Non-Active'}</div>
           <div className="metric-value" style={{ marginBottom: 12 }}>
-            {active && limit > 0 ? (
+            {hasView && limit > 0 ? (
               <>{used.toFixed(1)} GB <span style={{ fontSize: 16, fontWeight: 500, color: 'var(--text-dim)' }}>of {tierLabel(limit)} used</span></>
-            ) : '—'}
+            ) : hasView ? 'Unlimited' : '—'}
           </div>
-          <div className="metric-progress"><div className="metric-progress-fill" style={{ width: `${pct}%` }} /></div>
+          <div className="metric-progress"><div className="metric-progress-fill" style={{ width: `${dispPct}%` }} /></div>
           {!readOnly && <button className="btn btn-primary btn-sm" type="button" onClick={() => navigate('/plans')}>Upgrade Plan</button>}
         </div>
         <div className="metric-card violet">
           <div className="metric-eyebrow">Traffic Left</div>
           <div className="metric-label">Remaining Balance</div>
-          <div className="metric-value" style={{ marginBottom: 12 }}>{active ? `${left.toFixed(2)} GB` : '0.00 GB'}</div>
+          <div className="metric-value" style={{ marginBottom: 12 }}>{hasView ? (limit > 0 ? `${left.toFixed(2)} GB` : 'Unlimited') : '0.00 GB'}</div>
           <div className="metric-detail">
-            {active ? `${used.toFixed(1)} GB of ${tierLabel(limit)} used · ${subscription?.plans?.name ?? ''}` : 'No active plan — choose a plan to get started'}
+            {hasView
+              ? `${used.toFixed(1)} GB of ${limit > 0 ? tierLabel(limit) : '∞'} used · ${viewSub?.plans?.name ?? ''}${viewSubActive ? '' : ' · expired'}`
+              : 'No active plan — choose a plan to get started'}
           </div>
           {!readOnly && <button className="btn btn-primary btn-sm" type="button" onClick={() => navigate('/billing')}>Add GBs</button>}
         </div>
       </div>
-
-      {allSubs.length > 0 && (
-        <div className="panel" style={{ marginBottom: 24 }}>
-          <div className="panel-head">
-            <div>
-              <h3>Your Plans</h3>
-              <p>{activeCount} active · {allSubs.length} total — every plan tracks its own usage.</p>
-            </div>
-          </div>
-          {allSubs.map(s => {
-            const lim = s.bandwidth_limit_gb ?? 0
-            const usd = s.bandwidth_used_gb ?? 0
-            const usedPct = lim > 0 ? Math.min(100, (usd / lim) * 100) : 0
-            const status: [string, string] = subIsExpired(s)
-              ? ['Expired', 'bad']
-              : subIsExhausted(s)
-                ? ['Data used up', 'warn']
-                : ['Active', 'ok']
-            return (
-              <div className="myplan-row" key={s.id}>
-                <div className="myplan-info">
-                  <div className="myplan-name">{s.plans?.name ?? 'Plan'}</div>
-                  <div className="myplan-meta">
-                    {s.plans ? PRODUCT_META[productOf(s.plans.name)].name : 'Proxy'} ·
-                    {s.expiry_date ? ` expires ${new Date(s.expiry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ' no expiry'}
-                  </div>
-                </div>
-                <div className="myplan-usage">
-                  <span className="mono">{lim > 0 ? `${usd.toFixed(1)} / ${tierLabel(lim)} used` : 'Unlimited traffic'}</span>
-                  {lim > 0 && <div className="myplan-bar"><div className={`myplan-bar-fill${usedPct >= 100 ? ' bad' : usedPct >= 80 ? ' warn' : ''}`} style={{ width: `${usedPct}%` }} /></div>}
-                </div>
-                <span className={`tag dot ${status[1]}`}>{status[0]}</span>
-              </div>
-            )
-          })}
-        </div>
-      )}
 
       <div className="panel">
         <div className="panel-head">
