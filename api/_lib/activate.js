@@ -1,3 +1,5 @@
+import { sendEmail, purchaseEmail } from './email.js'
+
 /* Idempotent order activation — mirrors the admin "Approve top-up" flow.
    Safe to call multiple times (webhook retries + status polling). */
 export async function activateOrder(admin, orderId, cryptomusUuid) {
@@ -64,6 +66,23 @@ export async function activateOrder(admin, orderId, cryptomusUuid) {
       reason: 'Cryptomus payment ' + (cryptomusUuid || '') + ' · ' + (plan ? plan.name : 'plan') + ' · $' + Number(order.amount).toFixed(2),
     })
   } catch (_) { /* audit is optional */ }
+
+  /* 6. purchase confirmation email (best-effort, never blocks) */
+  try {
+    const { data: prof } = await admin.from('profiles')
+      .select('email, username').eq('id', order.user_id).maybeSingle()
+    if (prof && prof.email) {
+      const mail = purchaseEmail({
+        name: prof.username || prof.email.split('@')[0],
+        planName: plan ? plan.name : 'Proxy plan',
+        price: order.amount,
+        bandwidthGb: plan ? plan.bandwidth_gb : 0,
+        expiryDate: expiry.toISOString(),
+        orderId,
+      })
+      await sendEmail({ to: prof.email, subject: mail.subject, html: mail.html })
+    }
+  } catch (_) { /* email is optional */ }
 
   return { already: false, order }
 }
