@@ -21,9 +21,8 @@ export async function activateOrder(admin, orderId, cryptomusUuid) {
     .eq('id', orderId)
   if (oErr) throw oErr
 
-  /* 2. expire any currently-active subscription */
-  await admin.from('subscriptions').update({ status: 'expired' })
-    .eq('user_id', order.user_id).eq('status', 'active')
+  /* 2. multi-plan model: every purchase adds its OWN active subscription —
+        existing active plans keep running in parallel (never expired here) */
 
   /* 3. activate the new subscription */
   const { error: sErr } = await admin.from('subscriptions').insert({
