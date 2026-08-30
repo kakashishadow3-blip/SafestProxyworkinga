@@ -4,7 +4,7 @@ import jsPDF from 'jspdf'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { cn, fmtDate } from '@/lib/utils'
-import { subIsActive, subIsExpired } from '@/lib/subscription'
+import { subIsActive, subIsExpired, subIsExhausted } from '@/lib/subscription'
 import { showToast } from '@/lib/toast'
 import { productOf, PRODUCT_META, tierLong, threadsOf, periodOf } from '@/lib/plans'
 import type { Order, Profile, Subscription } from '@/types'
@@ -46,6 +46,7 @@ export default function Billing({ userId }: Props) {
 
   const [profile, setProfile] = useState<Profile | null>(null)
   const [subscription, setSubscription] = useState<Subscription | null>(null)
+  const [allSubs, setAllSubs] = useState<Subscription[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [activeInvoice, setActiveInvoice] = useState<Invoice | null>(null)
@@ -63,11 +64,14 @@ export default function Billing({ userId }: Props) {
         ? supabase.from('profiles').select('*').eq('id', uid).maybeSingle()
         : Promise.resolve({ data: ownProfile }),
       supabase.from('subscriptions').select('*, plans(*)').eq('user_id', uid)
-        .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        .order('created_at', { ascending: false }),
       supabase.from('orders').select('*, plans(*)').eq('user_id', uid).order('created_at', { ascending: false }),
     ])
+    const subs = (sub as Subscription[] | null) ?? []
     setProfile((prof as Profile | null) ?? null)
-    setSubscription((sub as Subscription | null) ?? null)
+    setAllSubs(subs)
+    /* Primary = first effectively-active plan, else the latest row */
+    setSubscription(subs.find(s => subIsActive(s)) ?? subs[0] ?? null)
     setOrders((ords as Order[] | null) ?? [])
     setLoading(false)
   }, [uid, readOnly, ownProfile])
@@ -407,7 +411,7 @@ export default function Billing({ userId }: Props) {
         <div><h1>Billing</h1><p>Manage your subscription, payments and invoices.</p></div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <span className={cn('badge-plan', !active && !loading && 'warn')} style={{ textTransform: 'uppercase' }}>
-            {loading ? 'Loading…' : active ? (plan?.name ?? 'Active') : expired ? 'Plan expired' : 'No active plan'}
+            {loading ? 'Loading…' : active ? (allSubs.filter(s => subIsActive(s)).length > 1 ? `${allSubs.filter(s => subIsActive(s)).length} plans active` : (plan?.name ?? 'Active')) : expired ? 'Plan expired' : 'No active plan'}
           </span>
           <span className={cn('tag', active ? 'ok' : 'warn')}>{loading ? 'Balance …' : `Balance ${active ? `${left.toFixed(2)} GB` : '$0.00'}`}</span>
         </div>
@@ -452,6 +456,36 @@ export default function Billing({ userId }: Props) {
         </div>
         {!readOnly && <button className="btn btn-ghost btn-sm" type="button" onClick={() => navigate('/plans')}>View plans</button>}
       </div>
+
+      {allSubs.length > 1 && (
+        <div className="panel" style={{ marginBottom: 24 }}>
+          <div className="panel-head">
+            <div><h3>All your plans</h3><p>{allSubs.filter(s => subIsActive(s)).length} active · {allSubs.length} total — each plan has its own traffic balance and expiry.</p></div>
+          </div>
+          {allSubs.map(s => {
+            const lim = s.bandwidth_limit_gb ?? 0
+            const usd = s.bandwidth_used_gb ?? 0
+            const usedPct = lim > 0 ? Math.min(100, (usd / lim) * 100) : 0
+            const st: [string, string] = subIsExpired(s) ? ['Expired', 'bad'] : subIsExhausted(s) ? ['Data used up', 'warn'] : ['Active', 'ok']
+            return (
+              <div className="myplan-row" key={s.id}>
+                <div className="myplan-info">
+                  <div className="myplan-name">{s.plans?.name ?? 'Plan'}</div>
+                  <div className="myplan-meta">
+                    {s.plans ? PRODUCT_META[productOf(s.plans.name)].name : 'Proxy'} ·
+                    {s.expiry_date ? ` expires ${fmtDate(new Date(s.expiry_date))}` : ' no expiry'}
+                  </div>
+                </div>
+                <div className="myplan-usage">
+                  <span className="mono">{lim > 0 ? `${usd.toFixed(1)} / ${tierLong(lim)} used` : 'Unlimited traffic'}</span>
+                  {lim > 0 && <div className="myplan-bar"><div className={`myplan-bar-fill${usedPct >= 100 ? ' bad' : usedPct >= 80 ? ' warn' : ''}`} style={{ width: `${usedPct}%` }} /></div>}
+                </div>
+                <span className={cn('tag dot', st[1])}>{st[0]}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       <div className="sum-grid">
         <div className="stat-card">
