@@ -404,10 +404,10 @@ export default function Billing({ userId }: Props) {
       <div className="sec-head" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div><h1>Billing</h1><p>Manage your subscription, payments and invoices.</p></div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span className={cn('badge-plan', !active && 'warn')} style={{ textTransform: 'uppercase' }}>
-            {active ? (plan?.name ?? 'Active') : 'No active plan'}
+          <span className={cn('badge-plan', !active && !loading && 'warn')} style={{ textTransform: 'uppercase' }}>
+            {loading ? 'Loading…' : active ? (plan?.name ?? 'Active') : 'No active plan'}
           </span>
-          <span className={cn('tag', active ? 'ok' : 'warn')}>Balance {active ? `${left.toFixed(2)} GB` : '$0.00'}</span>
+          <span className={cn('tag', active ? 'ok' : 'warn')}>{loading ? 'Balance …' : `Balance ${active ? `${left.toFixed(2)} GB` : '$0.00'}`}</span>
         </div>
       </div>
 
