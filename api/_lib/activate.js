@@ -80,7 +80,7 @@ export async function activateOrder(admin, orderId, cryptomusUuid) {
         expiryDate: expiry.toISOString(),
         orderId,
       })
-      await sendEmail({ to: prof.email, subject: mail.subject, html: mail.html })
+      await sendEmail({ to: prof.email, subject: mail.subject, html: mail.html, text: mail.text })
     }
   } catch (_) { /* email is optional */ }
 
