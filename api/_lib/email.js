@@ -11,10 +11,38 @@ function parseFrom() {
 
 export async function sendEmail({ to, subject, html, text }) {
   if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) return sendViaGmail({ to, subject, html, text })
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) return sendViaSmtp({ to, subject, html, text })
   if (process.env.BREVO_API_KEY) return sendViaBrevo({ to, subject, html, text })
   if (process.env.RESEND_API_KEY) return sendViaResend({ to, subject, html, text })
-  console.error('No email provider configured (GMAIL_USER/GMAIL_APP_PASSWORD, BREVO_API_KEY, RESEND_API_KEY) — email skipped.')
+  console.error('No email provider configured (GMAIL_USER/GMAIL_APP_PASSWORD, SMTP_*, BREVO_API_KEY, RESEND_API_KEY) — email skipped.')
   return false
+}
+
+/* Generic SMTP (cPanel / any mail server) — set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS */
+async function sendViaSmtp({ to, subject, html, text }) {
+  try {
+    const nodemailer = (await import('nodemailer')).default
+    const port = Number(process.env.SMTP_PORT || 465)
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port,
+      secure: port === 465,
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    })
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM || parseFrom().name + ' <' + process.env.SMTP_USER + '>',
+      to,
+      subject,
+      html,
+      text: text || '',
+      replyTo: 'support@safestproxy.com',
+      headers: { 'List-Unsubscribe': '<mailto:support@safestproxy.com>' },
+    })
+    return true
+  } catch (e) {
+    console.error('SMTP send failed:', e && e.message ? e.message : e)
+    return false
+  }
 }
 
 async function sendViaGmail({ to, subject, html, text }) {
@@ -28,7 +56,8 @@ async function sendViaGmail({ to, subject, html, text }) {
       auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
     })
     await transporter.sendMail({
-      from: `${sender.name} <${process.env.GMAIL_USER}>`,
+      // EMAIL_FROM env var can override the sender (e.g. a verified "Send mail as" alias like service@safestproxy.com)
+      from: process.env.EMAIL_FROM || `${sender.name} <${process.env.GMAIL_USER}>`,
       to,
       subject,
       html,
