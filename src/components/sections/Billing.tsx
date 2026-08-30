@@ -160,7 +160,7 @@ export default function Billing({ userId }: Props) {
       amount: Number(o.amount),
       status: o.status,
       date: fmtDate(created),
-      payMethod: 'Cryptomus (Crypto)',
+      payMethod: 'Cryptocurrency',
       txn: o.cryptomus_order_id ?? '—',
     }
   }), [orders])
@@ -414,12 +414,12 @@ export default function Billing({ userId }: Props) {
       {verifyState === 'checking' && (
         <div className="pay-verifying">
           <span className="gen-spinner" />
-          <span><strong>Confirming your payment…</strong> Cryptomus is verifying the transaction on-chain. This usually takes a few seconds — your plan will activate automatically.</span>
+          <span><strong>Confirming your payment…</strong> Your transaction is being verified on-chain. This usually takes a few seconds — your plan will activate automatically.</span>
         </div>
       )}
       {verifyState === 'waiting' && (
         <div className="pay-verifying">
-          <span><strong>Payment received.</strong> Confirmation is still in progress — your plan will activate automatically once Cryptomus finalizes it. No need to pay again.</span>
+          <span><strong>Payment received.</strong> Confirmation is still in progress — your plan will activate automatically once the payment is finalized. No need to pay again.</span>
         </div>
       )}
 
@@ -446,7 +446,7 @@ export default function Billing({ userId }: Props) {
           <div className="m"><div className="l">Remaining</div><div className="v">{active ? (limit > 0 ? `${left.toFixed(2)} GB` : 'Unlimited') : '—'}</div></div>
           <div className="m"><div className="l">Renews on</div><div className="v">{active && subscription?.expiry_date ? fmtDate(new Date(subscription.expiry_date)) : '—'}</div></div>
           <div className="m"><div className="l">Billing cycle</div><div className="v">{active && plan ? (productOf(plan.name) === 'unlimited_residential' ? periodOf(plan as never) + ' billing' : 'Monthly') : '—'}</div></div>
-          <div className="m"><div className="l">Payment method</div><div className="v">{lastPaid ? 'Cryptomus (Crypto)' : '—'}</div></div>
+          <div className="m"><div className="l">Payment method</div><div className="v">{lastPaid ? 'Cryptocurrency' : '—'}</div></div>
         </div>
         {!readOnly && <button className="btn btn-ghost btn-sm" type="button" onClick={() => navigate('/plans')}>View plans</button>}
       </div>
