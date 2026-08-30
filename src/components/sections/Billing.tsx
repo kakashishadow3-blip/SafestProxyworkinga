@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import jsPDF from 'jspdf'
 import { supabase } from '@/lib/supabase'
+import CustomSelect from '@/components/ui/CustomSelect'
 import { useAuth } from '@/hooks/useAuth'
 import { cn, fmtDate } from '@/lib/utils'
 import { subIsActive, subIsExpired, subIsExhausted } from '@/lib/subscription'
@@ -48,6 +49,7 @@ export default function Billing({ userId }: Props) {
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [allSubs, setAllSubs] = useState<Subscription[]>([])
   const [orders, setOrders] = useState<Order[]>([])
+  const [viewSubId, setViewSubId] = useState('')
   const [loading, setLoading] = useState(true)
   const [activeInvoice, setActiveInvoice] = useState<Invoice | null>(null)
   const [pdfBusy, setPdfBusy] = useState(false)
@@ -71,7 +73,10 @@ export default function Billing({ userId }: Props) {
     setProfile((prof as Profile | null) ?? null)
     setAllSubs(subs)
     /* Primary = first effectively-active plan, else the latest row */
-    setSubscription(subs.find(s => subIsActive(s)) ?? subs[0] ?? null)
+    const primary = subs.find(s => subIsActive(s)) ?? subs[0] ?? null
+    setSubscription(primary)
+    /* keep the admin/user's current selection if it still exists */
+    setViewSubId(prev => (prev && subs.some(s => s.id === prev) ? prev : primary?.id ?? ''))
     setOrders((ords as Order[] | null) ?? [])
     setLoading(false)
   }, [uid, readOnly, ownProfile])
@@ -140,13 +145,23 @@ export default function Billing({ userId }: Props) {
     }
   }
 
-  const active = subIsActive(subscription)
-  const expired = subIsExpired(subscription)
-  const plan = subscription?.plans ?? null
-  const limit = subscription?.bandwidth_limit_gb ?? 0
-  const used = subscription?.bandwidth_used_gb ?? 0
+  /* Header badge reflects ANY active plan; the panel below follows the SELECTED plan */
+  const anyActive = allSubs.some(s => subIsActive(s))
+  const anyExpired = !anyActive && allSubs.length > 0
+
+  /* Selected plan via the "All plans" dropdown — the whole panel shows its data */
+  const sel = allSubs.find(s => s.id === viewSubId) ?? subscription
+  const active = subIsActive(sel)
+  const expired = subIsExpired(sel)
+  const plan = sel?.plans ?? null
+  const limit = sel?.bandwidth_limit_gb ?? 0
+  const used = sel?.bandwidth_used_gb ?? 0
   const left = Math.max(0, limit - used)
-  const pct = active && limit > 0 ? Math.min(100, (used / limit) * 100) : 0
+  const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0
+  const subOptions = allSubs.map(s => ({
+    value: s.id,
+    label: `${s.plans?.name ?? 'Plan'}${subIsActive(s) ? (subIsExhausted(s) ? ' · data used up' : '') : ' · expired'}`,
+  }))
 
   const invoices = useMemo<Invoice[]>(() => orders.map(o => {
     const p = o.plans
@@ -410,10 +425,10 @@ export default function Billing({ userId }: Props) {
       <div className="sec-head" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div><h1>Billing</h1><p>Manage your subscription, payments and invoices.</p></div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span className={cn('badge-plan', !active && !loading && 'warn')} style={{ textTransform: 'uppercase' }}>
-            {loading ? 'Loading…' : active ? (allSubs.filter(s => subIsActive(s)).length > 1 ? `${allSubs.filter(s => subIsActive(s)).length} plans active` : (plan?.name ?? 'Active')) : expired ? 'Plan expired' : 'No active plan'}
+          <span className={cn('badge-plan', !anyActive && !loading && 'warn')} style={{ textTransform: 'uppercase' }}>
+            {loading ? 'Loading…' : anyActive ? (allSubs.filter(s => subIsActive(s)).length > 1 ? `${allSubs.filter(s => subIsActive(s)).length} plans active` : (subscription?.plans?.name ?? 'Active')) : anyExpired ? 'Plan expired' : 'No active plan'}
           </span>
-          <span className={cn('tag', active ? 'ok' : 'warn')}>{loading ? 'Balance …' : `Balance ${active ? `${left.toFixed(2)} GB` : '$0.00'}`}</span>
+          <span className={cn('tag', anyActive ? 'ok' : 'warn')}>{loading ? 'Balance …' : `Balance ${anyActive ? `${Math.max(0, (subscription?.bandwidth_limit_gb ?? 0) - (subscription?.bandwidth_used_gb ?? 0)).toFixed(2)} GB` : '$0.00'}`}</span>
         </div>
       </div>
 
@@ -429,11 +444,32 @@ export default function Billing({ userId }: Props) {
         </div>
       )}
 
+      {allSubs.length > 0 && (
+        <div className="ov-plan-bar">
+          <div className="ov-plan-bar-lbl">
+            All plans
+            <span className="ov-plan-bar-sub">{allSubs.filter(s => subIsActive(s)).length} active · {allSubs.length} total</span>
+          </div>
+          <div className="ov-plan-bar-select">
+            <CustomSelect
+              options={subOptions}
+              value={sel?.id ?? ''}
+              onChange={setViewSubId}
+            />
+          </div>
+          {sel && (
+            <span className={cn('tag dot', active ? 'ok' : subIsExhausted(sel) ? 'warn' : 'bad')}>
+              {active ? (subIsExhausted(sel) ? 'Data used up' : 'Active') : 'Expired'}
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="panel" style={{ marginBottom: 24 }}>
         <div className="cur-plan-top">
           <div>
-            <div className="inv-sec-lbl" style={{ marginBottom: 9 }}>Current plan</div>
-            <div className="cur-plan-name">{active ? (plan?.name ?? 'Active plan') : expired ? 'Plan expired' : 'No active plan'}</div>
+            <div className="inv-sec-lbl" style={{ marginBottom: 9 }}>{active ? 'Current plan' : 'Selected plan'}</div>
+            <div className="cur-plan-name">{sel ? (plan?.name ?? 'Active plan') : expired ? 'Plan expired' : 'No active plan'}</div>
             <div className="cur-plan-type">{active ? (plan ? PRODUCT_META[productOf(plan.name)].name : 'Proxy plan') : expired ? 'Renew or upgrade your plan to continue' : 'Add funds or choose a plan to get started'}</div>
           </div>
           <div>
@@ -450,42 +486,12 @@ export default function Billing({ userId }: Props) {
         </div>
         <div className="cur-plan-meta">
           <div className="m"><div className="l">Remaining</div><div className="v">{active ? (limit > 0 ? `${left.toFixed(2)} GB` : 'Unlimited') : '—'}</div></div>
-          <div className="m"><div className="l">Renews on</div><div className="v">{active && subscription?.expiry_date ? fmtDate(new Date(subscription.expiry_date)) : '—'}</div></div>
+          <div className="m"><div className="l">Renews on</div><div className="v">{active && sel?.expiry_date ? fmtDate(new Date(sel.expiry_date)) : '—'}</div></div>
           <div className="m"><div className="l">Billing cycle</div><div className="v">{active && plan ? (productOf(plan.name) === 'unlimited_residential' ? periodOf(plan as never) + ' billing' : 'Monthly') : '—'}</div></div>
           <div className="m"><div className="l">Payment method</div><div className="v">{lastPaid ? 'Cryptocurrency' : '—'}</div></div>
         </div>
         {!readOnly && <button className="btn btn-ghost btn-sm" type="button" onClick={() => navigate('/plans')}>View plans</button>}
       </div>
-
-      {allSubs.length > 1 && (
-        <div className="panel" style={{ marginBottom: 24 }}>
-          <div className="panel-head">
-            <div><h3>All your plans</h3><p>{allSubs.filter(s => subIsActive(s)).length} active · {allSubs.length} total — each plan has its own traffic balance and expiry.</p></div>
-          </div>
-          {allSubs.map(s => {
-            const lim = s.bandwidth_limit_gb ?? 0
-            const usd = s.bandwidth_used_gb ?? 0
-            const usedPct = lim > 0 ? Math.min(100, (usd / lim) * 100) : 0
-            const st: [string, string] = subIsExpired(s) ? ['Expired', 'bad'] : subIsExhausted(s) ? ['Data used up', 'warn'] : ['Active', 'ok']
-            return (
-              <div className="myplan-row" key={s.id}>
-                <div className="myplan-info">
-                  <div className="myplan-name">{s.plans?.name ?? 'Plan'}</div>
-                  <div className="myplan-meta">
-                    {s.plans ? PRODUCT_META[productOf(s.plans.name)].name : 'Proxy'} ·
-                    {s.expiry_date ? ` expires ${fmtDate(new Date(s.expiry_date))}` : ' no expiry'}
-                  </div>
-                </div>
-                <div className="myplan-usage">
-                  <span className="mono">{lim > 0 ? `${usd.toFixed(1)} / ${tierLong(lim)} used` : 'Unlimited traffic'}</span>
-                  {lim > 0 && <div className="myplan-bar"><div className={`myplan-bar-fill${usedPct >= 100 ? ' bad' : usedPct >= 80 ? ' warn' : ''}`} style={{ width: `${usedPct}%` }} /></div>}
-                </div>
-                <span className={cn('tag dot', st[1])}>{st[0]}</span>
-              </div>
-            )
-          })}
-        </div>
-      )}
 
       <div className="sum-grid">
         <div className="stat-card">
@@ -496,7 +502,7 @@ export default function Billing({ userId }: Props) {
         <div className="stat-card">
           <div className="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg></div>
           <div className="val">{active && plan ? `$${Number(plan.price).toFixed(2)}` : '$0.00'}</div>
-          <div className="lbl">Current billing · {active ? `renews ${subscription?.expiry_date ? fmtDate(new Date(subscription.expiry_date)) : 'soon'}` : 'no upcoming payment'}</div>
+          <div className="lbl">Current billing · {active ? `renews ${sel?.expiry_date ? fmtDate(new Date(sel.expiry_date)) : 'soon'}` : 'no upcoming payment'}</div>
         </div>
         <div className="stat-card">
           <div className="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z" /><path d="M9 7h6M9 11h6" /></svg></div>
