@@ -1,4 +1,4 @@
-/* Email engine — Brevo (primary) + Resend (fallback) with branded SafestProxy templates.
+/* Email engine — Gmail SMTP (primary) + Brevo + Resend (fallbacks) with branded SafestProxy templates.
    sendEmail never throws: email failures must never block payments or cron. */
 
 const FROM = process.env.EMAIL_FROM || 'SafestProxy <service@safestproxy.com>'
@@ -10,10 +10,37 @@ function parseFrom() {
 }
 
 export async function sendEmail({ to, subject, html, text }) {
+  if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) return sendViaGmail({ to, subject, html, text })
   if (process.env.BREVO_API_KEY) return sendViaBrevo({ to, subject, html, text })
   if (process.env.RESEND_API_KEY) return sendViaResend({ to, subject, html, text })
-  console.error('No email provider key configured (BREVO_API_KEY / RESEND_API_KEY) — email skipped.')
+  console.error('No email provider configured (GMAIL_USER/GMAIL_APP_PASSWORD, BREVO_API_KEY, RESEND_API_KEY) — email skipped.')
   return false
+}
+
+async function sendViaGmail({ to, subject, html, text }) {
+  try {
+    const nodemailer = (await import('nodemailer')).default
+    const sender = parseFrom()
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
+    })
+    await transporter.sendMail({
+      from: `${sender.name} <${process.env.GMAIL_USER}>`,
+      to,
+      subject,
+      html,
+      text: text || '',
+      replyTo: 'support@safestproxy.com',
+      headers: { 'List-Unsubscribe': '<mailto:support@safestproxy.com>' },
+    })
+    return true
+  } catch (e) {
+    console.error('Gmail SMTP send failed:', e && e.message ? e.message : e)
+    return false
+  }
 }
 
 async function sendViaBrevo({ to, subject, html, text }) {
