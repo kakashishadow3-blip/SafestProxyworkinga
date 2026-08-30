@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import type { Subscription } from '@/types'
 import { tierLabel, PRODUCT_META, PRODUCT_ORDER, productOf } from '@/lib/plans'
@@ -36,8 +36,14 @@ interface Props {
 
 export default function Sidebar({ open, onClose, subscription, subscriptions, isAdmin }: Props) {
   const navigate = useNavigate()
+  const location = useLocation()
   const [plansOpen, setPlansOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+
+  /* NavLink ignores ?query when matching — detect the active product manually
+     so ONLY the pressed item highlights */
+  const onPlansPage = location.pathname === '/plans'
+  const activeProduct = onPlansPage ? (new URLSearchParams(location.search).get('product') ?? '') : null
 
   /* Multi-plan: every effectively-active subscription gets its own mini card */
   const activeSubs = (subscriptions && subscriptions.length ? subscriptions : subscription ? [subscription] : [])
@@ -87,18 +93,22 @@ export default function Sidebar({ open, onClose, subscription, subscriptions, is
         {ICONS.chevron}
       </button>
       <div className={cn('nav-sub', plansOpen && 'show')}>
-        <NavLink to="/plans" end className={({ isActive }) => cn('nav-sub-item', isActive && 'active')} onClick={onClose}>
+        <button
+          type="button"
+          className={cn('nav-sub-item', onPlansPage && activeProduct === '' && 'active')}
+          onClick={() => { navigate('/plans'); onClose() }}
+        >
           All Products
-        </NavLink>
+        </button>
         {PRODUCT_ORDER.map(key => (
-          <NavLink
+          <button
             key={key}
-            to={`/plans?product=${key}`}
-            className={({ isActive }) => cn('nav-sub-item', isActive && 'active')}
-            onClick={onClose}
+            type="button"
+            className={cn('nav-sub-item', activeProduct === key && 'active')}
+            onClick={() => { navigate(`/plans?product=${key}`); onClose() }}
           >
             {PRODUCT_META[key].name}
-          </NavLink>
+          </button>
         ))}
       </div>
 
