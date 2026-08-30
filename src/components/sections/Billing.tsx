@@ -4,6 +4,7 @@ import jsPDF from 'jspdf'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { cn, fmtDate } from '@/lib/utils'
+import { subIsActive, subIsExpired } from '@/lib/subscription'
 import { showToast } from '@/lib/toast'
 import { productOf, PRODUCT_META, tierLong, threadsOf, periodOf } from '@/lib/plans'
 import type { Order, Profile, Subscription } from '@/types'
@@ -61,8 +62,8 @@ export default function Billing({ userId }: Props) {
       readOnly
         ? supabase.from('profiles').select('*').eq('id', uid).maybeSingle()
         : Promise.resolve({ data: ownProfile }),
-      supabase.from('subscriptions').select('*, plans(*)').eq('user_id', uid).eq('status', 'active')
-        .order('expiry_date', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('subscriptions').select('*, plans(*)').eq('user_id', uid)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('orders').select('*, plans(*)').eq('user_id', uid).order('created_at', { ascending: false }),
     ])
     setProfile((prof as Profile | null) ?? null)
@@ -135,7 +136,8 @@ export default function Billing({ userId }: Props) {
     }
   }
 
-  const active = !!subscription && subscription.status === 'active'
+  const active = subIsActive(subscription)
+  const expired = subIsExpired(subscription)
   const plan = subscription?.plans ?? null
   const limit = subscription?.bandwidth_limit_gb ?? 0
   const used = subscription?.bandwidth_used_gb ?? 0
@@ -405,7 +407,7 @@ export default function Billing({ userId }: Props) {
         <div><h1>Billing</h1><p>Manage your subscription, payments and invoices.</p></div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <span className={cn('badge-plan', !active && !loading && 'warn')} style={{ textTransform: 'uppercase' }}>
-            {loading ? 'Loading…' : active ? (plan?.name ?? 'Active') : 'No active plan'}
+            {loading ? 'Loading…' : active ? (plan?.name ?? 'Active') : expired ? 'Plan expired' : 'No active plan'}
           </span>
           <span className={cn('tag', active ? 'ok' : 'warn')}>{loading ? 'Balance …' : `Balance ${active ? `${left.toFixed(2)} GB` : '$0.00'}`}</span>
         </div>
@@ -427,8 +429,8 @@ export default function Billing({ userId }: Props) {
         <div className="cur-plan-top">
           <div>
             <div className="inv-sec-lbl" style={{ marginBottom: 9 }}>Current plan</div>
-            <div className="cur-plan-name">{active ? (plan?.name ?? 'Active plan') : 'No active plan'}</div>
-            <div className="cur-plan-type">{active ? (plan ? PRODUCT_META[productOf(plan.name)].name : 'Proxy plan') : 'Add funds or choose a plan to get started'}</div>
+            <div className="cur-plan-name">{active ? (plan?.name ?? 'Active plan') : expired ? 'Plan expired' : 'No active plan'}</div>
+            <div className="cur-plan-type">{active ? (plan ? PRODUCT_META[productOf(plan.name)].name : 'Proxy plan') : expired ? 'Renew or upgrade your plan to continue' : 'Add funds or choose a plan to get started'}</div>
           </div>
           <div>
             <div className="cur-plan-price">${active && plan ? Number(plan.price).toFixed(2) : '0.00'} <span>/ {plan && productOf(plan.name) === 'unlimited_residential' ? periodOf(plan) : 'month'}</span></div>
