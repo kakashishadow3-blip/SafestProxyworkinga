@@ -8,6 +8,7 @@ import DateRangePicker, { DateRange, defaultRange } from '@/components/ui/DateRa
 import { compactNum, dateKey } from '@/lib/utils'
 import { tierLabel } from '@/lib/plans'
 import { useTheme, isDarkMode } from '@/lib/theme'
+import { subIsActive } from '@/lib/subscription'
 import type { Subscription, UsageStat } from '@/types'
 
 Chart.register(...registerables)
@@ -45,12 +46,12 @@ export default function Overview({ userId }: Props) {
   useEffect(() => {
     if (!uid) return
     ;(async () => {
-      const [{ data: active }, { data: subs }] = await Promise.all([
-        supabase.from('subscriptions').select('*, plans(*)').eq('user_id', uid).eq('status', 'active')
-          .order('expiry_date', { ascending: false }).limit(1).maybeSingle(),
+      const [{ data: latest }, { data: subs }] = await Promise.all([
+        supabase.from('subscriptions').select('*, plans(*)').eq('user_id', uid)
+          .order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('subscriptions').select('*, plans(*)').eq('user_id', uid).order('created_at', { ascending: false }),
       ])
-      setSubscription((active as Subscription | null) ?? null)
+      setSubscription((latest as Subscription | null) ?? null)
       setAllSubs((subs as Subscription[] | null) ?? [])
     })()
   }, [uid])
@@ -188,7 +189,7 @@ export default function Overview({ userId }: Props) {
     return () => { chartRef.current?.destroy(); chartRef.current = null }
   }, [rows, isTraffic, hasData, planLabel, theme])
 
-  const active = subscription && subscription.status === 'active'
+  const active = subIsActive(subscription)
   const limit = subscription?.bandwidth_limit_gb ?? 0
   const used = subscription?.bandwidth_used_gb ?? 0
   const left = Math.max(0, limit - used)
