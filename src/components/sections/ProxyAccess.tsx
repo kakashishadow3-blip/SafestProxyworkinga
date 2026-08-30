@@ -65,7 +65,8 @@ export default function ProxyAccess({ userId }: Props) {
   const active = !!subscription && subscription.status === 'active'
   const limit = subscription?.bandwidth_limit_gb ?? 0
   const left = Math.max(0, limit - (subscription?.bandwidth_used_gb ?? 0))
-  const noFunds = !active || (limit > 0 && left <= 0)
+  /* Gate on loading so the empty-balance banner never flashes while data is being fetched */
+  const noFunds = !loading && (!active || (limit > 0 && left <= 0))
 
   const markDirty = () => { if (generated) setStale(true) }
 
