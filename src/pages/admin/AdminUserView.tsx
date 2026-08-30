@@ -36,13 +36,14 @@ export default function AdminUserView() {
 
   const [target, setTarget] = useState<Profile | null>(null)
   const [plans, setPlans] = useState<Plan[]>([])
-  const [subscription, setSubscription] = useState<Subscription | null>(null)
+  const [allSubs, setAllSubs] = useState<Subscription[]>([])
   const [creds, setCreds] = useState<ProxyCredential | null>(null)
   const [loading, setLoading] = useState(true)
 
   // manage form state
   const [fUsername, setFUsername] = useState('')
   const [fIsAdmin, setFIsAdmin] = useState(false)
+  const [fSubId, setFSubId] = useState('')          // '' = create a brand-new subscription
   const [fPlanId, setFPlanId] = useState('')
   const [fSubStatus, setFSubStatus] = useState<string>('active')
   const [fUsed, setFUsed] = useState('0')
@@ -55,30 +56,44 @@ export default function AdminUserView() {
   const [fCredStatus, setFCredStatus] = useState<string>('active')
   const [saving, setSaving] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  /* Fill the subscription form from a subscription row */
+  const fillSubForm = (sel: Subscription | null) => {
+    setFPlanId(sel?.plan_id ?? '')
+    setFSubStatus(sel?.status ?? 'active')
+    setFUsed(String(sel?.bandwidth_used_gb ?? 0))
+    setFLimit(String(sel?.bandwidth_limit_gb ?? 0))
+    setFExpiry(sel?.expiry_date ? sel.expiry_date.slice(0, 10) : '')
+  }
+
+  /* Admin picks which of the user's subscriptions to edit ('' = create new) */
+  const selectSub = (id: string) => {
+    setFSubId(id)
+    fillSubForm(id ? allSubs.find(x => x.id === id) ?? null : null)
+  }
+
+  const load = useCallback(async (keepSubId?: string) => {
     if (!userId) return
     setLoading(true)
     const [{ data: p }, { data: pl }, { data: s }, { data: c }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
       supabase.from('plans').select('*').order('price', { ascending: true }),
-      supabase.from('subscriptions').select('*, plans(*)').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('subscriptions').select('*, plans(*)').eq('user_id', userId).order('created_at', { ascending: false }),
       supabase.from('proxy_credentials').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     ])
     const prof = (p as Profile | null) ?? null
-    const sub = (s as Subscription | null) ?? null
+    const subs = (s as Subscription[] | null) ?? []
     const cred = (c as ProxyCredential | null) ?? null
     setTarget(prof)
     setPlans((pl as Plan[] | null) ?? [])
-    setSubscription(sub)
+    setAllSubs(subs)
     setCreds(cred)
 
     setFUsername(prof?.username ?? '')
     setFIsAdmin(!!prof?.is_admin)
-    setFPlanId(sub?.plan_id ?? '')
-    setFSubStatus(sub?.status ?? 'active')
-    setFUsed(String(sub?.bandwidth_used_gb ?? 0))
-    setFLimit(String(sub?.bandwidth_limit_gb ?? 0))
-    setFExpiry(sub?.expiry_date ? sub.expiry_date.slice(0, 10) : '')
+    /* keep editing the same subscription across reloads if it still exists */
+    const sel = subs.find(x => x.id === keepSubId) ?? subs[0] ?? null
+    setFSubId(sel?.id ?? '')
+    fillSubForm(sel)
     setFCredUser(cred?.dataimpulse_username ?? '')
     setFCredPass(cred?.dataimpulse_password ?? '')
     setFCredHost(cred?.host ?? 'gate.safestproxy.com')
@@ -108,6 +123,7 @@ export default function AdminUserView() {
     if (!admin || !userId) return
     setSaving('subscription')
     const plan = plans.find(p => p.id === fPlanId) ?? null
+    const editing = allSubs.find(x => x.id === fSubId) ?? null
     const payload = {
       plan_id: fPlanId || null,
       status: fSubStatus,
@@ -117,21 +133,14 @@ export default function AdminUserView() {
     }
 
     let error = null as { message: string } | null
-    let savedId = subscription?.id ?? ''
+    let savedId = editing?.id ?? ''
 
-    if (subscription) {
-      /* Edit in place — the row the admin sees is the row that changes */
-      if (fSubStatus === 'active') {
-        await supabase.from('subscriptions').update({ status: 'expired' })
-          .eq('user_id', userId).eq('status', 'active').neq('id', subscription.id)
-      }
-      const res = await supabase.from('subscriptions').update(payload).eq('id', subscription.id)
+    if (editing) {
+      /* Edit the selected row in place — other plans run independently (multi-plan model) */
+      const res = await supabase.from('subscriptions').update(payload).eq('id', editing.id)
       error = res.error
     } else {
-      /* No subscription yet — create one (expire other actives first) */
-      if (fSubStatus === 'active') {
-        await supabase.from('subscriptions').update({ status: 'expired' }).eq('user_id', userId).eq('status', 'active')
-      }
+      /* Brand-new subscription — added alongside any existing active plans */
       const res = await supabase.from('subscriptions')
         .insert({ ...payload, user_id: userId, start_date: new Date().toISOString() })
         .select().single()
@@ -142,10 +151,25 @@ export default function AdminUserView() {
     if (error) showToast('err', 'Could not save subscription', error.message)
     else {
       await logAudit(admin.id, userId, 'update_subscription', 'subscription', savedId,
-        subscription ? `${subscription.plans?.name ?? '—'} · ${subscription.status} · ${subscription.bandwidth_used_gb}/${subscription.bandwidth_limit_gb} GB` : 'none',
+        editing ? `${editing.plans?.name ?? '—'} · ${editing.status} · ${editing.bandwidth_used_gb}/${editing.bandwidth_limit_gb} GB` : 'none',
         `${plan?.name ?? '—'} · ${fSubStatus} · ${fUsed}/${fLimit} GB · expires ${fExpiry || '—'}`)
       showToast('ok', 'Subscription saved', `${plan?.name ?? 'Custom'} → ${fSubStatus}`)
-      await load()
+      await load(savedId || undefined)
+    }
+    setSaving(null)
+  }
+
+  /* Quick per-plan status toggle from the Active Plans list (expire ↔ reactivate) */
+  const setSubStatus = async (sub: Subscription, status: string) => {
+    if (!admin || !userId) return
+    setSaving('sub-' + sub.id)
+    const { error } = await supabase.from('subscriptions').update({ status }).eq('id', sub.id)
+    if (error) showToast('err', 'Could not update plan', error.message)
+    else {
+      await logAudit(admin.id, userId, 'update_subscription_status', 'subscription', sub.id,
+        `${sub.plans?.name ?? '—'} · ${sub.status}`, `${sub.plans?.name ?? '—'} · ${status}`)
+      showToast('ok', status === 'expired' ? 'Plan expired' : 'Plan activated', sub.plans?.name ?? '')
+      await load(sub.id)
     }
     setSaving(null)
   }
@@ -222,6 +246,53 @@ export default function AdminUserView() {
 
         {section === 'manage' && (
           <div className="manage-grid">
+            {/* ── Active Plans: every subscription the user owns, with per-plan controls ── */}
+            <div className="panel" style={{ gridColumn: '1 / -1' }}>
+              <div className="panel-head">
+                <div>
+                  <h3>User Plans ({allSubs.filter(s => s.status === 'active').length} active · {allSubs.length} total)</h3>
+                  <p>Every plan the user has purchased. Expire/activate or select a plan to edit it below.</p>
+                </div>
+              </div>
+              {allSubs.length === 0 && (
+                <p style={{ fontSize: 13.5, color: 'var(--text-mid)' }}>This user has no subscriptions yet — create one in the Subscription panel below.</p>
+              )}
+              {allSubs.map(s => {
+                const lim = s.bandwidth_limit_gb ?? 0
+                const usd = s.bandwidth_used_gb ?? 0
+                const pct = lim > 0 ? Math.min(100, (usd / lim) * 100) : 0
+                const isAct = s.status === 'active'
+                return (
+                  <div className="myplan-row" key={s.id}>
+                    <div className="myplan-info">
+                      <div className="myplan-name">{s.plans?.name ?? 'Custom plan'}</div>
+                      <div className="myplan-meta">
+                        {s.expiry_date ? `expires ${new Date(s.expiry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : 'no expiry'}
+                        {' · '}created {new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </div>
+                    </div>
+                    <div className="myplan-usage">
+                      <span className="mono">{lim > 0 ? `${usd.toFixed(1)} / ${lim} GB used` : 'Unlimited traffic'}</span>
+                      {lim > 0 && <div className="myplan-bar"><div className={`myplan-bar-fill${pct >= 100 ? ' bad' : pct >= 80 ? ' warn' : ''}`} style={{ width: `${pct}%` }} /></div>}
+                    </div>
+                    <span className={cn('tag dot', isAct ? 'ok' : s.status === 'expired' ? 'bad' : 'warn')}>{s.status}</span>
+                    <div className="myplan-actions">
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => selectSub(s.id)}>Edit</button>
+                      {isAct ? (
+                        <button className="btn btn-secondary btn-sm" type="button" disabled={saving === 'sub-' + s.id} onClick={() => setSubStatus(s, 'expired')}>
+                          {saving === 'sub-' + s.id ? 'Working…' : 'Expire'}
+                        </button>
+                      ) : (
+                        <button className="btn btn-primary btn-sm" type="button" disabled={saving === 'sub-' + s.id} onClick={() => setSubStatus(s, 'active')}>
+                          {saving === 'sub-' + s.id ? 'Working…' : 'Activate'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
             <div className="panel">
               <div className="panel-head"><div><h3>Account</h3><p>Username and role for this user.</p></div></div>
               <div className="form-row">
@@ -245,7 +316,18 @@ export default function AdminUserView() {
             </div>
 
             <div className="panel">
-              <div className="panel-head"><div><h3>Subscription</h3><p>Assign or edit the user's plan. Saving updates the current subscription — changes reflect on the user's dashboard immediately.</p></div></div>
+              <div className="panel-head"><div><h3>Subscription</h3><p>Select which of the user's plans to edit, or create a new one. Changes reflect on the user's dashboard immediately — each plan runs independently.</p></div></div>
+              <div className="form-row">
+                <label>Editing subscription</label>
+                <select className="plain-select" value={fSubId} onChange={e => selectSub(e.target.value)}>
+                  {allSubs.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.plans?.name ?? 'Custom plan'} · {s.status} · {s.bandwidth_used_gb}/{s.bandwidth_limit_gb} GB
+                    </option>
+                  ))}
+                  <option value="">＋ Create new subscription</option>
+                </select>
+              </div>
               <div className="form-row">
                 <label>Plan</label>
                 <select className="plain-select" value={fPlanId} onChange={e => {
