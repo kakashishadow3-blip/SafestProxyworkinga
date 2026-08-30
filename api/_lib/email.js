@@ -17,7 +17,7 @@ export async function sendEmail({ to, subject, html, text }) {
         subject,
         html,
         text: text || '',
-        headers: { 'List-Unsubscribe': '<mailto:support@safestproxy.com>' },
+        headers: { 'List-Unsubscribe': '<mailto:service@safestproxy.com>' },
       }),
     })
     if (!res.ok) {
@@ -56,7 +56,7 @@ function layout({ eyebrow, title, intro, rows, ctaLabel, ctaUrl, footer }) {
       <p style="margin:14px 0 0;font-size:11.5px;line-height:1.6;color:#B6BCC9;">You received this email because you have an account at SafestProxy (app.safestproxy.com). This is a service notification about your subscription, not marketing mail.</p>
     </div>
     <div style="text-align:center;padding:22px 0;font-size:11.5px;color:#9AA1B2;">
-      SafestProxy · <a href="${APP_URL}" style="color:#0EA5B7;text-decoration:none;">app.safestproxy.com</a> · <a href="mailto:support@safestproxy.com" style="color:#0EA5B7;text-decoration:none;">support@safestproxy.com</a>
+      SafestProxy · <a href="${APP_URL}" style="color:#0EA5B7;text-decoration:none;">app.safestproxy.com</a> · <a href="mailto:service@safestproxy.com" style="color:#0EA5B7;text-decoration:none;">service@safestproxy.com</a>
     </div>
   </div>
 </body></html>`
@@ -85,7 +85,7 @@ export function purchaseEmail({ name, planName, price, bandwidthGb, expiryDate, 
       '',
       'Open your dashboard: ' + APP_URL,
       '',
-      'Your invoice is available anytime in the Billing section. Questions? Contact support@safestproxy.com.',
+      'Your invoice is available anytime in the Billing section. Questions? Contact service@safestproxy.com.',
       '',
       'You received this email because you have an account at SafestProxy (app.safestproxy.com). This is a service notification about your subscription, not marketing mail.',
     ].join('\n'),
@@ -102,7 +102,7 @@ export function purchaseEmail({ name, planName, price, bandwidthGb, expiryDate, 
       ],
       ctaLabel: 'Open Dashboard',
       ctaUrl: APP_URL,
-      footer: 'Your invoice is available anytime in the Billing section of your dashboard. Questions? Reply to this email or contact support@safestproxy.com.',
+      footer: 'Your invoice is available anytime in the Billing section of your dashboard. Questions? Reply to this email or contact service@safestproxy.com.',
     }),
   }
 }
@@ -123,7 +123,7 @@ export function expiredEmail({ name, planName, expiryDate }) {
       ],
       ctaLabel: 'Renew Plan',
       ctaUrl: APP_URL + '/plans',
-      footer: 'Need an extension or a custom plan? Contact support@safestproxy.com — we are happy to help.',
+      footer: 'Need an extension or a custom plan? Contact service@safestproxy.com — we are happy to help.',
     }),
   }
 }
