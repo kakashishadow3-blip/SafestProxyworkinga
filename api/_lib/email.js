@@ -4,14 +4,21 @@
 const FROM = process.env.EMAIL_FROM || 'SafestProxy <service@safestproxy.com>'
 const APP_URL = (process.env.APP_URL || 'https://app.safestproxy.com').replace(/\/+$/, '')
 
-export async function sendEmail({ to, subject, html }) {
+export async function sendEmail({ to, subject, html, text }) {
   const key = process.env.RESEND_API_KEY
   if (!key) { console.error('RESEND_API_KEY is not configured — email skipped.') ; return false }
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
-      body: JSON.stringify({ from: FROM, to: [to], subject, html }),
+      body: JSON.stringify({
+        from: FROM,
+        to: [to],
+        subject,
+        html,
+        text: text || '',
+        headers: { 'List-Unsubscribe': '<mailto:support@safestproxy.com>' },
+      }),
     })
     if (!res.ok) {
       console.error('Resend error:', res.status, await res.text().catch(() => ''))
@@ -46,6 +53,7 @@ function layout({ eyebrow, title, intro, rows, ctaLabel, ctaUrl, footer }) {
       ${rows && rows.length ? `<table style="width:100%;border-collapse:collapse;margin-bottom:24px;">${rowHtml}</table>` : ''}
       ${ctaLabel ? `<a href="${ctaUrl}" style="display:inline-block;background:#0D0F14;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:700;padding:13px 26px;border-radius:10px;">${ctaLabel}</a>` : ''}
       <p style="margin:26px 0 0;font-size:12.5px;line-height:1.6;color:#9AA1B2;">${footer}</p>
+      <p style="margin:14px 0 0;font-size:11.5px;line-height:1.6;color:#B6BCC9;">You received this email because you have an account at SafestProxy (app.safestproxy.com). This is a service notification about your subscription, not marketing mail.</p>
     </div>
     <div style="text-align:center;padding:22px 0;font-size:11.5px;color:#9AA1B2;">
       SafestProxy · <a href="${APP_URL}" style="color:#0EA5B7;text-decoration:none;">app.safestproxy.com</a> · <a href="mailto:support@safestproxy.com" style="color:#0EA5B7;text-decoration:none;">support@safestproxy.com</a>
@@ -64,6 +72,23 @@ export function purchaseEmail({ name, planName, price, bandwidthGb, expiryDate, 
   const hi = name ? 'Hi ' + name + ',' : 'Hi there,'
   return {
     subject: 'Your SafestProxy plan is active — ' + planName,
+    text: [
+      hi,
+      '',
+      'Your payment has been confirmed and your subscription was activated automatically. You can start generating proxies right away from your dashboard.',
+      '',
+      'Plan: ' + planName,
+      'Traffic allowance: ' + (bandwidthGb > 0 ? gb(bandwidthGb) : 'Unlimited'),
+      'Amount paid: ' + money(price),
+      'Valid until: ' + fdate(expiryDate),
+      'Order ID: #' + String(orderId).replace(/-/g, '').slice(0, 8).toUpperCase(),
+      '',
+      'Open your dashboard: ' + APP_URL,
+      '',
+      'Your invoice is available anytime in the Billing section. Questions? Contact support@safestproxy.com.',
+      '',
+      'You received this email because you have an account at SafestProxy (app.safestproxy.com). This is a service notification about your subscription, not marketing mail.',
+    ].join('\n'),
     html: layout({
       eyebrow: 'Payment confirmed',
       title: 'Your plan is now active',
@@ -119,7 +144,7 @@ export function exhaustedEmail({ name, planName, limitGb }) {
       ],
       ctaLabel: 'Upgrade Plan',
       ctaUrl: APP_URL + '/plans',
-      footer: 'Running heavy workloads? Ask support@safestproxy.com about higher-volume plans.',
+      footer: 'Running heavy workloads? Ask service@safestproxy.com about higher-volume plans.',
     }),
   }
 }
