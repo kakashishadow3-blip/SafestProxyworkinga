@@ -52,9 +52,7 @@ export default function AdminPanel() {
       const start = new Date()
       const expiry = new Date(start.getTime() + (plan?.duration_days ?? 30) * 86400000)
 
-      // expire any currently-active subscription
-      await supabase.from('subscriptions').update({ status: 'expired' })
-        .eq('user_id', order.user_id).eq('status', 'active')
+      // multi-plan model: the new plan activates alongside any existing active plans
 
       const { data: sub, error: sErr } = await supabase.from('subscriptions').insert({
         user_id: order.user_id,
