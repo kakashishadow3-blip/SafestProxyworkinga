@@ -109,21 +109,39 @@ export default function AdminUserView() {
     setSaving('subscription')
     const plan = plans.find(p => p.id === fPlanId) ?? null
     const payload = {
-      user_id: userId,
       plan_id: fPlanId || null,
       status: fSubStatus,
       bandwidth_used_gb: Number(fUsed) || 0,
       bandwidth_limit_gb: Number(fLimit) || 0,
-      start_date: subscription?.start_date ?? new Date().toISOString(),
       expiry_date: fExpiry ? new Date(fExpiry + 'T23:59:59Z').toISOString() : null,
     }
-    if (fSubStatus === 'active') {
-      await supabase.from('subscriptions').update({ status: 'expired' }).eq('user_id', userId).eq('status', 'active')
+
+    let error = null as { message: string } | null
+    let savedId = subscription?.id ?? ''
+
+    if (subscription) {
+      /* Edit in place — the row the admin sees is the row that changes */
+      if (fSubStatus === 'active') {
+        await supabase.from('subscriptions').update({ status: 'expired' })
+          .eq('user_id', userId).eq('status', 'active').neq('id', subscription.id)
+      }
+      const res = await supabase.from('subscriptions').update(payload).eq('id', subscription.id)
+      error = res.error
+    } else {
+      /* No subscription yet — create one (expire other actives first) */
+      if (fSubStatus === 'active') {
+        await supabase.from('subscriptions').update({ status: 'expired' }).eq('user_id', userId).eq('status', 'active')
+      }
+      const res = await supabase.from('subscriptions')
+        .insert({ ...payload, user_id: userId, start_date: new Date().toISOString() })
+        .select().single()
+      error = res.error
+      savedId = res.data?.id ?? ''
     }
-    const { data, error } = await supabase.from('subscriptions').insert(payload).select().single()
+
     if (error) showToast('err', 'Could not save subscription', error.message)
     else {
-      await logAudit(admin.id, userId, 'update_subscription', 'subscription', data.id,
+      await logAudit(admin.id, userId, 'update_subscription', 'subscription', savedId,
         subscription ? `${subscription.plans?.name ?? '—'} · ${subscription.status} · ${subscription.bandwidth_used_gb}/${subscription.bandwidth_limit_gb} GB` : 'none',
         `${plan?.name ?? '—'} · ${fSubStatus} · ${fUsed}/${fLimit} GB · expires ${fExpiry || '—'}`)
       showToast('ok', 'Subscription saved', `${plan?.name ?? 'Custom'} → ${fSubStatus}`)
@@ -227,7 +245,7 @@ export default function AdminUserView() {
             </div>
 
             <div className="panel">
-              <div className="panel-head"><div><h3>Subscription</h3><p>Assign or edit the user's plan. Saving creates a new subscription row and expires the current one when set to active.</p></div></div>
+              <div className="panel-head"><div><h3>Subscription</h3><p>Assign or edit the user's plan. Saving updates the current subscription — changes reflect on the user's dashboard immediately.</p></div></div>
               <div className="form-row">
                 <label>Plan</label>
                 <select className="plain-select" value={fPlanId} onChange={e => {
