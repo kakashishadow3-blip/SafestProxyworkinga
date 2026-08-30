@@ -1,23 +1,59 @@
-/* Email engine — Resend API + branded SafestProxy templates.
+/* Email engine — Brevo (primary) + Resend (fallback) with branded SafestProxy templates.
    sendEmail never throws: email failures must never block payments or cron. */
 
 const FROM = process.env.EMAIL_FROM || 'SafestProxy <service@safestproxy.com>'
 const APP_URL = (process.env.APP_URL || 'https://app.safestproxy.com').replace(/\/+$/, '')
 
+function parseFrom() {
+  const m = FROM.match(/^\s*(.*?)\s*<([^>]+)>\s*$/)
+  return m ? { name: m[1], email: m[2] } : { name: 'SafestProxy', email: FROM }
+}
+
 export async function sendEmail({ to, subject, html, text }) {
-  const key = process.env.RESEND_API_KEY
-  if (!key) { console.error('RESEND_API_KEY is not configured — email skipped.') ; return false }
+  if (process.env.BREVO_API_KEY) return sendViaBrevo({ to, subject, html, text })
+  if (process.env.RESEND_API_KEY) return sendViaResend({ to, subject, html, text })
+  console.error('No email provider key configured (BREVO_API_KEY / RESEND_API_KEY) — email skipped.')
+  return false
+}
+
+async function sendViaBrevo({ to, subject, html, text }) {
+  try {
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'api-key': process.env.BREVO_API_KEY, accept: 'application/json' },
+      body: JSON.stringify({
+        sender: parseFrom(),
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+        textContent: text || '',
+        headers: { 'List-Unsubscribe': '<mailto:support@safestproxy.com>' },
+        tags: ['transactional'],
+      }),
+    })
+    if (!res.ok) {
+      console.error('Brevo error:', res.status, await res.text().catch(() => ''))
+      return false
+    }
+    return true
+  } catch (e) {
+    console.error('Brevo send failed:', e && e.message ? e.message : e)
+    return false
+  }
+}
+
+async function sendViaResend({ to, subject, html, text }) {
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.RESEND_API_KEY },
       body: JSON.stringify({
         from: FROM,
         to: [to],
         subject,
         html,
         text: text || '',
-        headers: { 'List-Unsubscribe': '<mailto:service@safestproxy.com>' },
+        headers: { 'List-Unsubscribe': '<mailto:support@safestproxy.com>' },
       }),
     })
     if (!res.ok) {
@@ -26,7 +62,7 @@ export async function sendEmail({ to, subject, html, text }) {
     }
     return true
   } catch (e) {
-    console.error('Email send failed:', e && e.message ? e.message : e)
+    console.error('Resend send failed:', e && e.message ? e.message : e)
     return false
   }
 }
@@ -56,7 +92,7 @@ function layout({ eyebrow, title, intro, rows, ctaLabel, ctaUrl, footer }) {
       <p style="margin:14px 0 0;font-size:11.5px;line-height:1.6;color:#B6BCC9;">You received this email because you have an account at SafestProxy (app.safestproxy.com). This is a service notification about your subscription, not marketing mail.</p>
     </div>
     <div style="text-align:center;padding:22px 0;font-size:11.5px;color:#9AA1B2;">
-      SafestProxy · <a href="${APP_URL}" style="color:#0EA5B7;text-decoration:none;">app.safestproxy.com</a> · <a href="mailto:service@safestproxy.com" style="color:#0EA5B7;text-decoration:none;">service@safestproxy.com</a>
+      SafestProxy · <a href="${APP_URL}" style="color:#0EA5B7;text-decoration:none;">app.safestproxy.com</a> · <a href="mailto:support@safestproxy.com" style="color:#0EA5B7;text-decoration:none;">support@safestproxy.com</a>
     </div>
   </div>
 </body></html>`
@@ -85,7 +121,7 @@ export function purchaseEmail({ name, planName, price, bandwidthGb, expiryDate, 
       '',
       'Open your dashboard: ' + APP_URL,
       '',
-      'Your invoice is available anytime in the Billing section. Questions? Contact service@safestproxy.com.',
+      'Your invoice is available anytime in the Billing section. Questions? Contact support@safestproxy.com.',
       '',
       'You received this email because you have an account at SafestProxy (app.safestproxy.com). This is a service notification about your subscription, not marketing mail.',
     ].join('\n'),
@@ -102,7 +138,7 @@ export function purchaseEmail({ name, planName, price, bandwidthGb, expiryDate, 
       ],
       ctaLabel: 'Open Dashboard',
       ctaUrl: APP_URL,
-      footer: 'Your invoice is available anytime in the Billing section of your dashboard. Questions? Reply to this email or contact service@safestproxy.com.',
+      footer: 'Your invoice is available anytime in the Billing section of your dashboard. Questions? Reply to this email or contact support@safestproxy.com.',
     }),
   }
 }
@@ -123,7 +159,7 @@ export function expiredEmail({ name, planName, expiryDate }) {
       ],
       ctaLabel: 'Renew Plan',
       ctaUrl: APP_URL + '/plans',
-      footer: 'Need an extension or a custom plan? Contact service@safestproxy.com — we are happy to help.',
+      footer: 'Need an extension or a custom plan? Contact support@safestproxy.com — we are happy to help.',
     }),
   }
 }
@@ -144,7 +180,7 @@ export function exhaustedEmail({ name, planName, limitGb }) {
       ],
       ctaLabel: 'Upgrade Plan',
       ctaUrl: APP_URL + '/plans',
-      footer: 'Running heavy workloads? Ask service@safestproxy.com about higher-volume plans.',
+      footer: 'Running heavy workloads? Ask support@safestproxy.com about higher-volume plans.',
     }),
   }
 }
