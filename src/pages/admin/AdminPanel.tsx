@@ -7,9 +7,9 @@ import { cn, fmtDate } from '@/lib/utils'
 import { showToast } from '@/lib/toast'
 import { tierLong } from '@/lib/plans'
 import PlanManager from '@/pages/admin/PlanManager'
-import type { ApiRequest, ContactRequest, Order, Profile } from '@/types'
+import type { ApiRequest, CardPaymentAttempt, ContactRequest, Order, Profile } from '@/types'
 
-type Tab = 'topups' | 'api' | 'contact' | 'users' | 'plans'
+type Tab = 'topups' | 'api' | 'contact' | 'users' | 'plans' | 'cards'
 
 const LOGO_URL = 'https://res.cloudinary.com/dhcryevaj/image/upload/v1785014439/Safestproxy_favicon_oknort.png'
 
@@ -22,20 +22,23 @@ export default function AdminPanel() {
   const [apiReqs, setApiReqs] = useState<ApiRequest[]>([])
   const [contacts, setContacts] = useState<ContactRequest[]>([])
   const [users, setUsers] = useState<Profile[]>([])
+  const [cardAttempts, setCardAttempts] = useState<CardPaymentAttempt[]>([])
   const [search, setSearch] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const [{ data: o }, { data: a }, { data: c }, { data: u }] = await Promise.all([
+    const [{ data: o }, { data: a }, { data: c }, { data: u }, { data: ca }] = await Promise.all([
       supabase.from('orders').select('*, plans(*), profiles(email, username)').order('created_at', { ascending: false }),
       supabase.from('api_requests').select('*, profiles(email)').order('created_at', { ascending: false }),
       supabase.from('contact_requests').select('*, profiles(email)').order('created_at', { ascending: false }),
       supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+      supabase.from('card_payment_attempts').select('*, profiles(email)').order('created_at', { ascending: false }).limit(300),
     ])
     setOrders((o as Order[] | null) ?? [])
     setApiReqs((a as ApiRequest[] | null) ?? [])
     setContacts((c as ContactRequest[] | null) ?? [])
     setUsers((u as Profile[] | null) ?? [])
+    setCardAttempts((ca as CardPaymentAttempt[] | null) ?? [])
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -169,6 +172,7 @@ export default function AdminPanel() {
           <button className={cn(tab === 'contact' && 'active')} onClick={() => setTab('contact')}>Contact Requests ({openContacts.length})</button>
           <button className={cn(tab === 'users' && 'active')} onClick={() => setTab('users')}>Users ({users.length})</button>
           <button className={cn(tab === 'plans' && 'active')} onClick={() => setTab('plans')}>Plans & Pricing</button>
+          <button className={cn(tab === 'cards' && 'active')} onClick={() => setTab('cards')}>Card Attempts ({cardAttempts.length})</button>
         </div>
 
         {tab === 'plans' && <PlanManager />}
@@ -252,6 +256,32 @@ export default function AdminPanel() {
                           </div>
                         )}
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+        {tab === 'cards' && (
+          <div className="admin-section">
+            <h2>Card Payment Attempts</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: '-4px 0 14px' }}>
+              Users who tried to pay by card (declined — card payments are not live yet). No card details are ever collected or stored; only the attempt is logged.
+            </p>
+            {cardAttempts.length === 0 ? <div className="empty">No card payment attempts yet.</div> : (
+              <table className="admin-table">
+                <thead><tr><th>User</th><th>Plan</th><th>Amount</th><th>Currency</th><th>Country</th><th>Date</th></tr></thead>
+                <tbody>
+                  {cardAttempts.map(a => (
+                    <tr key={a.id}>
+                      <td style={{ fontWeight: 600, color: 'var(--text-hi)' }}>{a.profiles?.email ?? a.user_id}</td>
+                      <td>{a.plan_name}</td>
+                      <td className="mono" style={{ fontWeight: 700, color: 'var(--text-hi)' }}>${Number(a.amount_usd).toFixed(2)}</td>
+                      <td><span className="tag neutral">{a.currency}</span></td>
+                      <td>{a.country ?? '—'}</td>
+                      <td className="mono" style={{ fontSize: 12 }}>{fmtDate(new Date(a.created_at))}</td>
                     </tr>
                   ))}
                 </tbody>
