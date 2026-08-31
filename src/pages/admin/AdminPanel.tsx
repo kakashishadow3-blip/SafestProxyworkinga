@@ -272,7 +272,7 @@ export default function AdminPanel() {
             </p>
             {cardAttempts.length === 0 ? <div className="empty">No card payment attempts yet.</div> : (
               <table className="admin-table">
-                <thead><tr><th>User</th><th>Plan</th><th>Amount</th><th>Currency</th><th>Country</th><th>Date</th></tr></thead>
+                <thead><tr><th>User</th><th>Plan</th><th>Amount</th><th>Currency</th><th>Country</th><th>City</th><th>Postal</th><th>Date</th></tr></thead>
                 <tbody>
                   {cardAttempts.map(a => (
                     <tr key={a.id}>
@@ -281,6 +281,8 @@ export default function AdminPanel() {
                       <td className="mono" style={{ fontWeight: 700, color: 'var(--text-hi)' }}>${Number(a.amount_usd).toFixed(2)}</td>
                       <td><span className="tag neutral">{a.currency}</span></td>
                       <td>{a.country ?? '—'}</td>
+                      <td>{a.city ?? '—'}</td>
+                      <td className="mono" style={{ fontSize: 12 }}>{a.postal_code ?? '—'}</td>
                       <td className="mono" style={{ fontSize: 12 }}>{fmtDate(new Date(a.created_at))}</td>
                     </tr>
                   ))}
