@@ -7,9 +7,11 @@ import { cn, fmtDate } from '@/lib/utils'
 import { showToast } from '@/lib/toast'
 import { tierLong } from '@/lib/plans'
 import PlanManager from '@/pages/admin/PlanManager'
-import type { ApiRequest, CardPaymentAttempt, ContactRequest, Order, Profile } from '@/types'
+import type { ApiRequest, CardPaymentAttempt, ContactRequest, KycVerification, Order, Profile } from '@/types'
 
-type Tab = 'topups' | 'api' | 'contact' | 'users' | 'plans' | 'cards'
+type Tab = 'topups' | 'api' | 'contact' | 'users' | 'plans' | 'cards' | 'kyc'
+
+type KycFilter = 'all' | 'under_review' | 'approved' | 'rejected'
 
 const LOGO_URL = 'https://res.cloudinary.com/dhcryevaj/image/upload/v1785014439/Safestproxy_favicon_oknort.png'
 
@@ -23,22 +25,32 @@ export default function AdminPanel() {
   const [contacts, setContacts] = useState<ContactRequest[]>([])
   const [users, setUsers] = useState<Profile[]>([])
   const [cardAttempts, setCardAttempts] = useState<CardPaymentAttempt[]>([])
+  const [kycList, setKycList] = useState<KycVerification[]>([])
+  const [kycFilter, setKycFilter] = useState<KycFilter>('all')
+  const [kycSearch, setKycSearch] = useState('')
+  const [reviewKyc, setReviewKyc] = useState<KycVerification | null>(null)
+  const [docUrls, setDocUrls] = useState<{ front: string | null; back: string | null }>({ front: null, back: null })
+  const [kycBusy, setKycBusy] = useState(false)
+  const [rejectOpen, setRejectOpen] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
   const [search, setSearch] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const [{ data: o }, { data: a }, { data: c }, { data: u }, { data: ca }] = await Promise.all([
+    const [{ data: o }, { data: a }, { data: c }, { data: u }, { data: ca }, { data: k }] = await Promise.all([
       supabase.from('orders').select('*, plans(*), profiles(email, username)').order('created_at', { ascending: false }),
       supabase.from('api_requests').select('*, profiles(email)').order('created_at', { ascending: false }),
       supabase.from('contact_requests').select('*, profiles(email)').order('created_at', { ascending: false }),
       supabase.from('profiles').select('*').order('created_at', { ascending: false }),
       supabase.from('card_payment_attempts').select('*, profiles(email)').order('created_at', { ascending: false }).limit(300),
+      supabase.from('kyc_verifications').select('*, profiles(email, username, created_at)').order('submitted_at', { ascending: false }),
     ])
     setOrders((o as Order[] | null) ?? [])
     setApiReqs((a as ApiRequest[] | null) ?? [])
     setContacts((c as ContactRequest[] | null) ?? [])
     setUsers((u as Profile[] | null) ?? [])
     setCardAttempts((ca as CardPaymentAttempt[] | null) ?? [])
+    setKycList((k as KycVerification[] | null) ?? [])
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -55,6 +67,8 @@ export default function AdminPanel() {
       const start = new Date()
       const expiry = new Date(start.getTime() + (plan?.duration_days ?? 30) * 86400000)
 
+      // multi-plan model: the new plan activates alongside any existing active plans
+
       const { data: sub, error: sErr } = await supabase.from('subscriptions').insert({
         user_id: order.user_id,
         plan_id: order.plan_id,
@@ -66,6 +80,7 @@ export default function AdminPanel() {
       }).select().single()
       if (sErr) throw sErr
 
+      // ensure proxy credentials exist
       const { data: cred } = await supabase.from('proxy_credentials').select('id').eq('user_id', order.user_id).limit(1)
       if (!cred || cred.length === 0) {
         const un = 'u' + Math.random().toString(36).slice(2, 12)
@@ -131,9 +146,100 @@ export default function AdminPanel() {
     setBusyId(null)
   }
 
+  /* ── KYC review actions ─────────────────────────────────────── */
+  const openKycReview = async (k: KycVerification) => {
+    setReviewKyc(k)
+    setDocUrls({ front: null, back: null })
+    const [f, b] = await Promise.all([
+      k.front_document_path ? supabase.storage.from('kyc-documents').createSignedUrl(k.front_document_path, 300) : Promise.resolve(null),
+      k.back_document_path ? supabase.storage.from('kyc-documents').createSignedUrl(k.back_document_path, 300) : Promise.resolve(null),
+    ])
+    setDocUrls({ front: f?.data?.signedUrl ?? null, back: b?.data?.signedUrl ?? null })
+  }
+
+  const kycEmail = async (event: 'approved' | 'rejected', userId: string, reason?: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      await fetch('/api/kyc-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ event, user_id: userId, reason }),
+      })
+    } catch { /* email is best-effort */ }
+  }
+
+  const approveKyc = async () => {
+    const k = reviewKyc
+    if (!k || !user || kycBusy || k.status !== 'under_review') return
+    setKycBusy(true)
+    try {
+      const now = new Date().toISOString()
+      const { error } = await supabase.from('kyc_verifications').update({
+        status: 'approved', reviewed_at: now, reviewed_by: user.id, rejection_reason: null, updated_at: now,
+      }).eq('id', k.id).eq('status', 'under_review')
+      if (error) throw error
+      await supabase.from('notifications').insert({
+        user_id: k.user_id, type: 'kyc_approved', title: 'KYC Verification Approved',
+        message: 'Your identity verification has been successfully approved. Your account is now verified.',
+        action_url: '/profile', metadata: { event: `kyc_approved:${k.id}` },
+      })
+      kycEmail('approved', k.user_id)
+      await logAudit(user.id, k.user_id, 'kyc_approve', 'kyc_verification', k.id, 'under_review', 'approved')
+      showToast('ok', 'KYC approved', 'The user has been notified.')
+      setReviewKyc(null)
+      await load()
+    } catch (e) {
+      showToast('err', 'Could not approve', e instanceof Error ? e.message : undefined)
+    }
+    setKycBusy(false)
+  }
+
+  const confirmRejectKyc = async () => {
+    const k = reviewKyc
+    const reason = rejectReason.trim()
+    if (!k || !user || kycBusy || k.status !== 'under_review') return
+    if (!reason) {
+      showToast('err', 'Rejection reason is required')
+      return
+    }
+    setKycBusy(true)
+    try {
+      const now = new Date().toISOString()
+      const { error } = await supabase.from('kyc_verifications').update({
+        status: 'rejected', reviewed_at: now, reviewed_by: user.id, rejection_reason: reason, updated_at: now,
+      }).eq('id', k.id).eq('status', 'under_review')
+      if (error) throw error
+      await supabase.from('notifications').insert({
+        user_id: k.user_id, type: 'kyc_rejected', title: 'KYC Verification Rejected',
+        message: 'Your identity verification could not be approved. Please review the provided information and resubmit your documents.',
+        action_url: '/profile', metadata: { event: `kyc_rejected:${k.id}:${now}` },
+      })
+      kycEmail('rejected', k.user_id, reason)
+      await logAudit(user.id, k.user_id, 'kyc_reject', 'kyc_verification', k.id, 'under_review', 'rejected', reason)
+      showToast('ok', 'KYC rejected', 'The user has been notified with the reason.')
+      setRejectOpen(false)
+      setRejectReason('')
+      setReviewKyc(null)
+      await load()
+    } catch (e) {
+      showToast('err', 'Could not reject', e instanceof Error ? e.message : undefined)
+    }
+    setKycBusy(false)
+  }
+
   const pendingOrders = orders.filter(o => o.status === 'awaiting_topup' || o.status === 'pending')
   const pendingApi = apiReqs.filter(r => r.status === 'pending')
   const openContacts = contacts.filter(c => c.status === 'open')
+  const pendingKyc = kycList.filter(k => k.status === 'under_review')
+  const filteredKyc = kycList.filter(k => {
+    if (kycFilter !== 'all' && k.status !== kycFilter) return false
+    const q = kycSearch.trim().toLowerCase()
+    if (!q) return true
+    return (k.profiles?.email ?? '').toLowerCase().includes(q)
+      || (k.profiles?.username ?? '').toLowerCase().includes(q)
+      || k.user_id.toLowerCase().includes(q)
+  })
   const filteredUsers = users.filter(u =>
     !search || u.email.toLowerCase().includes(search.toLowerCase()) || (u.username ?? '').toLowerCase().includes(search.toLowerCase()))
 
@@ -170,6 +276,7 @@ export default function AdminPanel() {
           <button className={cn(tab === 'users' && 'active')} onClick={() => setTab('users')}>Users ({users.length})</button>
           <button className={cn(tab === 'plans' && 'active')} onClick={() => setTab('plans')}>Plans & Pricing</button>
           <button className={cn(tab === 'cards' && 'active')} onClick={() => setTab('cards')}>Card Attempts ({cardAttempts.length})</button>
+          <button className={cn(tab === 'kyc' && 'active')} onClick={() => setTab('kyc')}>KYC Verifications ({pendingKyc.length})</button>
         </div>
 
         {tab === 'plans' && <PlanManager />}
@@ -265,48 +372,69 @@ export default function AdminPanel() {
           <div className="admin-section">
             <h2>Card Payment Attempts</h2>
             <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: '-4px 0 14px' }}>
-              <strong>⚠️ Debugging only</strong> — these fields include sensitive card data (full number, expiry, CVC, and cardholder name). 
-              <br />In production, this data should <em>never</em> be stored or displayed. Use only for troubleshooting in a secure environment.
+              Users who tried to pay by card (declined — card payments are not live yet). No card details are ever collected or stored; only the attempt is logged.
             </p>
             {cardAttempts.length === 0 ? <div className="empty">No card payment attempts yet.</div> : (
-              <div style={{ overflowX: 'auto' }}>
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th>User</th>
-                      <th>Plan</th>
-                      <th>Amount</th>
-                      <th>Currency</th>
-                      <th>Card Number</th>
-                      <th>Expiry</th>
-                      <th>CVC</th>
-                      <th>Cardholder</th>
-                      <th>Country</th>
-                      <th>City</th>
-                      <th>Postal</th>
-                      <th>Date</th>
+              <table className="admin-table">
+                <thead><tr><th>User</th><th>Plan</th><th>Amount</th><th>Currency</th><th>Country</th><th>City</th><th>Postal</th><th>Date</th></tr></thead>
+                <tbody>
+                  {cardAttempts.map(a => (
+                    <tr key={a.id}>
+                      <td style={{ fontWeight: 600, color: 'var(--text-hi)' }}>{a.profiles?.email ?? a.user_id}</td>
+                      <td>{a.plan_name}</td>
+                      <td className="mono" style={{ fontWeight: 700, color: 'var(--text-hi)' }}>${Number(a.amount_usd).toFixed(2)}</td>
+                      <td><span className="tag neutral">{a.currency}</span></td>
+                      <td>{a.country ?? '—'}</td>
+                      <td>{a.city ?? '—'}</td>
+                      <td className="mono" style={{ fontSize: 12 }}>{a.postal_code ?? '—'}</td>
+                      <td className="mono" style={{ fontSize: 12 }}>{fmtDate(new Date(a.created_at))}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {cardAttempts.map(a => (
-                      <tr key={a.id}>
-                        <td style={{ fontWeight: 600, color: 'var(--text-hi)' }}>{a.profiles?.email ?? a.user_id}</td>
-                        <td>{a.plan_name}</td>
-                        <td className="mono" style={{ fontWeight: 700, color: 'var(--text-hi)' }}>${Number(a.amount_usd).toFixed(2)}</td>
-                        <td><span className="tag neutral">{a.currency}</span></td>
-                        <td className="mono" style={{ fontSize: 12 }}>{a.card_number ?? '—'}</td>
-                        <td className="mono" style={{ fontSize: 12 }}>{a.expiry ?? '—'}</td>
-                        <td className="mono" style={{ fontSize: 12 }}>{a.cvc ?? '—'}</td>
-                        <td style={{ fontSize: 12 }}>{a.cardholder_name ?? '—'}</td>
-                        <td>{a.country ?? '—'}</td>
-                        <td>{a.city ?? '—'}</td>
-                        <td className="mono" style={{ fontSize: 12 }}>{a.postal_code ?? '—'}</td>
-                        <td className="mono" style={{ fontSize: 12 }}>{fmtDate(new Date(a.created_at))}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+        {tab === 'kyc' && (
+          <div className="admin-section">
+            <h2>KYC Verifications</h2>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+              <div className="plan-tabs" style={{ marginBottom: 0 }}>
+                {(['all', 'under_review', 'approved', 'rejected'] as KycFilter[]).map(f => (
+                  <button key={f} type="button" className={cn('plan-tab', kycFilter === f && 'active')} onClick={() => setKycFilter(f)}>
+                    {f === 'all' ? 'All' : f === 'under_review' ? `Under Review (${pendingKyc.length})` : f === 'approved' ? 'Approved' : 'Rejected'}
+                  </button>
+                ))}
               </div>
+              <div className="form-row" style={{ marginBottom: 0, flex: 1, minWidth: 220, maxWidth: 340 }}>
+                <input type="text" placeholder="Search by name, email or user ID…" value={kycSearch} onChange={e => setKycSearch(e.target.value)} />
+              </div>
+            </div>
+            {filteredKyc.length === 0 ? <div className="empty">No KYC submissions found.</div> : (
+              <table className="admin-table">
+                <thead><tr><th>User</th><th>User ID</th><th>Country</th><th>Submitted</th><th>Status</th><th style={{ textAlign: 'right' }}>Action</th></tr></thead>
+                <tbody>
+                  {filteredKyc.map(k => (
+                    <tr key={k.id}>
+                      <td style={{ fontWeight: 600, color: 'var(--text-hi)' }}>{k.profiles?.email ?? k.user_id}</td>
+                      <td className="mono" style={{ fontSize: 11.5 }}>{k.user_id.slice(0, 8)}…</td>
+                      <td>{k.country ?? '—'}</td>
+                      <td className="mono" style={{ fontSize: 12 }}>
+                        {k.submitted_at ? new Date(k.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' · ' + new Date(k.submitted_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </td>
+                      <td>
+                        <span className={cn('tag dot', k.status === 'approved' ? 'ok' : k.status === 'under_review' ? 'warn' : 'bad')} style={{ textTransform: 'uppercase' }}>
+                          {k.status === 'under_review' ? 'Under Review' : k.status}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button className="btn btn-primary btn-sm" type="button" onClick={() => openKycReview(k)}>View</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         )}
@@ -337,6 +465,101 @@ export default function AdminPanel() {
             )}
           </div>
         )}
+      {/* ── KYC review modal ── */}
+      {reviewKyc && (
+        <div className="modal-backdrop show" onClick={kycBusy ? undefined : () => { setReviewKyc(null); setRejectOpen(false); setRejectReason('') }}>
+          <div className="modal-card kyc-review-card" role="dialog" aria-modal="true" aria-label="KYC review" onClick={e => e.stopPropagation()}>
+            <h3>KYC Verification Review</h3>
+
+            <div className="inv-sec-lbl" style={{ marginBottom: 8 }}>User information</div>
+            <div className="cur-plan-meta" style={{ marginBottom: 18 }}>
+              <div className="m"><div className="l">Name</div><div className="v">{reviewKyc.profiles?.username ?? '—'}</div></div>
+              <div className="m"><div className="l">Email</div><div className="v" style={{ wordBreak: 'break-all' }}>{reviewKyc.profiles?.email ?? '—'}</div></div>
+              <div className="m"><div className="l">User ID</div><div className="v mono" style={{ fontSize: 11.5, wordBreak: 'break-all' }}>{reviewKyc.user_id}</div></div>
+              <div className="m"><div className="l">Account created</div><div className="v">{reviewKyc.profiles?.created_at ? fmtDate(new Date(reviewKyc.profiles.created_at)) : '—'}</div></div>
+              <div className="m"><div className="l">Country</div><div className="v">{reviewKyc.country ?? '—'}</div></div>
+              <div className="m"><div className="l">Submitted</div><div className="v">{reviewKyc.submitted_at ? fmtDate(new Date(reviewKyc.submitted_at)) + ' · ' + new Date(reviewKyc.submitted_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—'}</div></div>
+            </div>
+
+            <div className="inv-sec-lbl" style={{ marginBottom: 8 }}>Identity documents</div>
+            <div className="kyc-docs">
+              {(['front', 'back'] as const).map(side => {
+                const url = side === 'front' ? docUrls.front : docUrls.back
+                const path = side === 'front' ? reviewKyc.front_document_path : reviewKyc.back_document_path
+                return (
+                  <div className="kyc-doc" key={side}>
+                    <div className="kyc-doc-l">{side === 'front' ? 'Front of Document' : 'Back of Document'}</div>
+                    {!path && <div className="kyc-doc-empty">Not uploaded</div>}
+                    {path && !url && <div className="kyc-doc-empty">Loading preview…</div>}
+                    {path && url && (
+                      path.toLowerCase().endsWith('.pdf') ? (
+                        <a className="btn btn-secondary btn-sm" href={url} target="_blank" rel="noopener noreferrer">Open PDF document</a>
+                      ) : (
+                        <a href={url} target="_blank" rel="noopener noreferrer">
+                          <img src={url} alt={`${side} of identity document`} className="kyc-doc-img" />
+                        </a>
+                      )
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {reviewKyc.status === 'under_review' ? (
+              <div className="modal-actions" style={{ marginTop: 20 }}>
+                <button className="btn btn-ghost" type="button" disabled={kycBusy} onClick={() => { setRejectOpen(true); setRejectReason('') }}>Reject KYC</button>
+                <button className={cn('btn btn-primary', kycBusy && 'loading')} type="button" disabled={kycBusy} onClick={approveKyc}>
+                  <span className="gen-spinner" />
+                  <span>{kycBusy ? 'Working…' : 'Approve KYC'}</span>
+                </button>
+              </div>
+            ) : (
+              <div className="modal-actions" style={{ marginTop: 20 }}>
+                <span className={cn('tag dot', reviewKyc.status === 'approved' ? 'ok' : 'bad')}>
+                  {reviewKyc.status === 'approved' ? 'Approved' : 'Rejected'}
+                  {reviewKyc.reviewed_at ? ` · ${fmtDate(new Date(reviewKyc.reviewed_at))}` : ''}
+                </span>
+                <button className="btn btn-ghost" type="button" onClick={() => setReviewKyc(null)}>Close</button>
+              </div>
+            )}
+            {reviewKyc.status === 'rejected' && reviewKyc.rejection_reason && (
+              <div className="kyc-reason" style={{ marginTop: 12 }}>
+                <span className="kyc-reason-l">Rejection reason</span>
+                {reviewKyc.rejection_reason}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── KYC reject reason modal ── */}
+      {rejectOpen && reviewKyc && (
+        <div className="modal-backdrop show" style={{ zIndex: 120 }} onClick={kycBusy ? undefined : () => setRejectOpen(false)}>
+          <div className="modal-card" role="dialog" aria-modal="true" aria-label="Reject KYC" onClick={e => e.stopPropagation()}>
+            <h3>Reject KYC Verification</h3>
+            <p className="modal-sub">
+              The user will see this reason and will be able to resubmit their documents.
+            </p>
+            <div className="form-row">
+              <label>Reason for rejection</label>
+              <textarea
+                rows={4}
+                placeholder="e.g. Document is unclear, expired, information does not match, or front/back side is missing…"
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
+              />
+            </div>
+            <div className="modal-actions" style={{ marginTop: 16 }}>
+              <button className="btn btn-ghost" type="button" disabled={kycBusy} onClick={() => setRejectOpen(false)}>Cancel</button>
+              <button className={cn('btn btn-primary', kycBusy && 'loading')} type="button" disabled={kycBusy || !rejectReason.trim()} onClick={confirmRejectKyc}>
+                <span className="gen-spinner" />
+                <span>{kycBusy ? 'Working…' : 'Confirm Rejection'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   )
