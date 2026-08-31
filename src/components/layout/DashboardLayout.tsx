@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 import { subIsActive } from '@/lib/subscription'
+import { syncPlanNotifications } from '@/lib/notifications'
 import type { Subscription } from '@/types'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
@@ -30,7 +31,10 @@ export default function DashboardLayout() {
       .select('*, plans(*)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-    setSubscriptions((data as Subscription[] | null) ?? [])
+    const subs = (data as Subscription[] | null) ?? []
+    setSubscriptions(subs)
+    /* automatic plan notifications (expired / low-data / exhausted) — deduped server-side */
+    syncPlanNotifications(user.id, subs)
   }, [user])
 
   useEffect(() => { refreshSubscription() }, [refreshSubscription])
