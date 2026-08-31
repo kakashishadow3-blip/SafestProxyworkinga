@@ -61,13 +61,20 @@ export function periodOf(plan: Plan): UPeriod {
 }
 export const U_PERIOD_LABELS: Record<UPeriod, string> = { day: '/day', week: '/week', month: '/month' }
 
-export const POPULAR_TIER_GB = 135
-
-/* Which traffic tier gets the "Most Popular" label, per product.
-   (Unlimited Residential uses the weekly period instead — see Plans.tsx) */
-export const POPULAR_TIER_BY_PRODUCT: Partial<Record<ProductKey, number>> = {
-  residential: 65,
-  mobile: 135,
-  static_residential: 52,
-  datacenter: 240,
+/* Corner-ribbon configuration: which plan gets the ribbon, and what it says.
+   Unlimited Residential keys off the weekly period instead of a GB tier
+   (handled in Plans.tsx). Change the popular plan for any product here only. */
+export interface PopularRibbon {
+  tier: number
+  label: string
 }
+export const POPULAR_RIBBON_BY_PRODUCT: Partial<Record<ProductKey, PopularRibbon>> = {
+  residential: { tier: 65, label: 'Most Popular' },
+  mobile: { tier: 135, label: 'Popular' },
+  static_residential: { tier: 52, label: 'Popular' },
+  datacenter: { tier: 240, label: 'Popular' },
+}
+export const UNLIMITED_RIBBON_LABEL = 'Popular' // shown on the Weekly plan
+
+/* Residential loads with its popular tier pre-selected */
+export const DEFAULT_TIER_GB = 65
