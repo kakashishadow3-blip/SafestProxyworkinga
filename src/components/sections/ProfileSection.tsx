@@ -8,7 +8,7 @@ import { INV_STATUS, invoicesFromOrders, generateInvoicePdf } from '@/lib/invoic
 import KycModal from '@/components/ui/KycModal'
 import type { KycVerification, Order, Profile, Subscription } from '@/types'
 
-type PTab = 'account' | 'payments' | 'plans' | 'kyc'
+type PTab = 'account' | 'payments' | 'plans'
 
 /* "August 31, 2026 — 01:42 PM" */
 const fmtCreated = (iso?: string | null) => {
@@ -73,7 +73,7 @@ export default function ProfileSection({ userId }: Props) {
 
   /* Orders + subscriptions load lazily the first time a data tab opens */
   useEffect(() => {
-    if (tab === 'account' || tab === 'kyc' || !uid || orders.length > 0 || subs.length > 0 || dataLoading) return
+    if (tab === 'account' || !uid || orders.length > 0 || subs.length > 0 || dataLoading) return
     setDataLoading(true)
     Promise.all([
       supabase.from('orders').select('*, plans(*)').eq('user_id', uid).order('created_at', { ascending: false }),
@@ -86,9 +86,9 @@ export default function ProfileSection({ userId }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, uid])
 
-  /* KYC record loads the first time the KYC tab opens */
+  /* KYC record loads the first time the Account tab opens (KYC lives inside it) */
   useEffect(() => {
-    if (tab === 'kyc' && uid && !kycLoaded && !kycLoading) loadKyc()
+    if (tab === 'account' && uid && !kycLoaded && !kycLoading) loadKyc()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, uid])
 
@@ -182,12 +182,12 @@ export default function ProfileSection({ userId }: Props) {
         <button type="button" className={cn('plan-tab', tab === 'account' && 'active')} onClick={() => setTab('account')}>Account</button>
         <button type="button" className={cn('plan-tab', tab === 'payments' && 'active')} onClick={() => setTab('payments')}>Payment History</button>
         <button type="button" className={cn('plan-tab', tab === 'plans' && 'active')} onClick={() => setTab('plans')}>Plan Details</button>
-        <button type="button" className={cn('plan-tab', tab === 'kyc' && 'active')} onClick={() => setTab('kyc')}>KYC Verification</button>
       </div>
 
-      {/* ================= Account ================= */}
+      {/* ================= Account (Profile card + KYC Verification) ================= */}
       {tab === 'account' && (
-        <div className="panel">
+        <>
+        <div className="panel" style={{ marginBottom: 20 }}>
           <div className="panel-head">
             <div>
               <h3>Profile</h3>
@@ -235,6 +235,7 @@ export default function ProfileSection({ userId }: Props) {
             </div>
           )}
         </div>
+        </>
       )}
 
       {/* ================= Payment History ================= */}
@@ -315,8 +316,8 @@ export default function ProfileSection({ userId }: Props) {
           </div>
         </>
       )}
-      {/* ================= KYC Verification ================= */}
-      {tab === 'kyc' && (
+      {/* ================= KYC Verification (shown under the Profile card in Account) ================= */}
+      {tab === 'account' && (
         <div className="panel">
           <div className="panel-head">
             <div>
