@@ -205,8 +205,14 @@ export default function PaymentModal({ open, planName, price, busy, onClose, onC
   const goCrypto = () => setStep('crypto')
 
   const backToMethods = (
-    <button type="button" className="spm-back" onClick={() => { setStep('method'); setBanner(''); setDeclined(false); setErrs({}) }} disabled={busy || processing}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+    <button
+      type="button"
+      className="spm-back"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: 'none', background: 'none', padding: '4px 0', margin: '2px 0 14px', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#0A6CFF', fontFamily: 'inherit' }}
+      onClick={() => { setStep('method'); setBanner(''); setDeclined(false); setErrs({}) }}
+      disabled={busy || processing}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
       All payment methods
     </button>
   )
@@ -290,7 +296,7 @@ export default function PaymentModal({ open, planName, price, busy, onClose, onC
 
             <div className="spm-lbl" style={{ marginTop: 18 }}>Payment method</div>
             <div className="spm-method">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg>
               Card
             </div>
 
@@ -376,7 +382,7 @@ export default function PaymentModal({ open, planName, price, busy, onClose, onC
 
             {(banner || declined) && (
               <div className="spm-decline" role="alert" ref={bannerRef}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" /></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flex: 'none', marginTop: 1 }}><circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" /></svg>
                 <span>{declined ? 'Your card was declined. Please try a different card, or choose another payment method below.' : banner}</span>
               </div>
             )}
@@ -462,7 +468,7 @@ export default function PaymentModal({ open, planName, price, busy, onClose, onC
           <div className="spm-trouble-backdrop" onClick={() => setTroubleOpen(false)}>
             <div className="spm-trouble" role="alertdialog" aria-modal="true" onClick={e => e.stopPropagation()}>
               <div className="spm-trouble-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></svg>
               </div>
               <h4>Having trouble with your card?</h4>
               <p>If you keep facing this issue, you can choose another payment method instead — crypto payments are confirmed automatically.</p>
