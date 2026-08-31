@@ -2,9 +2,24 @@ import { getAdminClient } from './_lib/admin.js'
 import { sendEmail, expiredEmail, exhaustedEmail } from './_lib/email.js'
 
 /* GET /api/check-expirations — called daily by Vercel Cron.
-   1. Active subscriptions past their expiry date → mark expired + "plan expired" email
-   2. Active subscriptions with bandwidth fully used → "data finished" email (once)
+   1. Active subscriptions past their expiry date → mark expired + "plan expired" email + notification
+   2. Active subscriptions with bandwidth fully used → "data finished" email (once) + notification
+   3. Active subscriptions with <= LOW_DATA_THRESHOLD_GB remaining → low-data notification (once)
    Protected by CRON_SECRET (Vercel sends it automatically in the Authorization header). */
+
+const LOW_DATA_THRESHOLD_GB = 2   // configurable low-data alert threshold
+
+/* Insert a dashboard notification; the unique (user,type,event) index swallows duplicates. */
+async function notify(admin, { userId, type, title, message, actionUrl, event }) {
+  try {
+    await admin.from('notifications').insert({
+      user_id: userId, type, title, message,
+      action_url: actionUrl || null,
+      metadata: event ? { event } : {},
+    })
+  } catch { /* duplicate or transient — safe to ignore */ }
+}
+
 export default async function handler(req, res) {
   const secret = process.env.CRON_SECRET
   const header = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
@@ -27,6 +42,14 @@ export default async function handler(req, res) {
     try {
       await admin.from('subscriptions').update({ status: 'expired' }).eq('id', sub.id)
       result.expired += 1
+      await notify(admin, {
+        userId: sub.user_id,
+        type: 'plan_expired',
+        title: 'Plan Expired',
+        message: `Your ${sub.plans ? sub.plans.name : 'proxy'} plan has expired. Please upgrade your plan to continue using our services.`,
+        actionUrl: '/plans',
+        event: `expired:${sub.id}`,
+      })
       if (!sub.expiry_email_sent_at && sub.profiles && sub.profiles.email) {
         const mail = expiredEmail({
           name: sub.profiles.username || sub.profiles.email.split('@')[0],
@@ -56,7 +79,30 @@ export default async function handler(req, res) {
     try {
       const used = Number(sub.bandwidth_used_gb) || 0
       const limit = Number(sub.bandwidth_limit_gb) || 0
-      if (limit <= 0 || used < limit) continue
+      if (limit <= 0) continue
+
+      /* low-data heads-up (once per subscription) */
+      const remaining = limit - used
+      if (remaining > 0 && remaining <= LOW_DATA_THRESHOLD_GB) {
+        await notify(admin, {
+          userId: sub.user_id,
+          type: 'low_data',
+          title: 'Your Data Is Almost Used',
+          message: `Only ${remaining.toFixed(2)} GB is left on your ${sub.plans ? sub.plans.name : 'proxy'} plan. Your data may run out soon — please upgrade your plan or add more data before it runs out.`,
+          actionUrl: '/plans',
+          event: `lowdata:${sub.id}`,
+        })
+      }
+
+      if (used < limit) continue
+      await notify(admin, {
+        userId: sub.user_id,
+        type: 'data_exhausted',
+        title: 'Data Finished',
+        message: `Your ${sub.plans ? sub.plans.name : 'proxy'} plan's data is fully used. Upgrade your plan or add more data to continue.`,
+        actionUrl: '/plans',
+        event: `exhausted:${sub.id}`,
+      })
       if (!sub.profiles || !sub.profiles.email) continue
       const mail = exhaustedEmail({
         name: sub.profiles.username || sub.profiles.email.split('@')[0],
