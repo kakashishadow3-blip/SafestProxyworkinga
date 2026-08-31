@@ -37,8 +37,8 @@ interface Props {
 export default function Sidebar({ open, onClose, subscription, subscriptions, isAdmin }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
-  const [plansOpen, setPlansOpen] = useState(false)
-  const [helpOpen, setHelpOpen] = useState(false)
+  const [plansOpen, setPlansOpen] = useState(true)
+  const [helpOpen, setHelpOpen] = useState(true)
 
   /* NavLink ignores ?query when matching — detect the active product manually
      so ONLY the pressed item highlights */
