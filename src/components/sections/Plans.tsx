@@ -7,7 +7,8 @@ import { cn } from '@/lib/utils'
 import PaymentModal from '@/components/ui/PaymentModal'
 import {
   PRODUCT_META, PRODUCT_ORDER, ProductKey, UPeriod, U_PERIOD_LABELS,
-  productOf, tierLabel, tierLong, threadsOf, periodOf, POPULAR_TIER_GB, POPULAR_TIER_BY_PRODUCT,
+  productOf, tierLabel, tierLong, threadsOf, periodOf,
+  POPULAR_RIBBON_BY_PRODUCT, UNLIMITED_RIBBON_LABEL, DEFAULT_TIER_GB,
 } from '@/lib/plans'
 import type { Plan } from '@/types'
 
@@ -30,7 +31,7 @@ export default function Plans({ userId }: Props) {
   const [plans, setPlans] = useState<Plan[]>([])
   const [loading, setLoading] = useState(true)
   const [product, setProduct] = useState<ProductKey>('residential')
-  const [tier, setTier] = useState<number>(POPULAR_TIER_GB)
+  const [tier, setTier] = useState<number>(DEFAULT_TIER_GB) // Residential opens on its popular 65GB plan
   const [period, setPeriod] = useState<UPeriod>('day')
   const [threads, setThreads] = useState(100)
   const [payOpen, setPayOpen] = useState(false)
@@ -74,9 +75,12 @@ export default function Plans({ userId }: Props) {
 
   const price = selectedPlan ? Number(selectedPlan.price) : null
   const meta = PRODUCT_META[product]
-  // "Most Popular" label: one specific tier per product (Unlimited → weekly period)
-  const popularTier = POPULAR_TIER_BY_PRODUCT[product]
-  const ribbonShown = isUnlimited ? period === 'week' : popularTier !== undefined && tier === popularTier
+  // Corner ribbon: tied to ONE designated plan per product (config in lib/plans.ts) —
+  // it never follows the user's selection around
+  const popularCfg = POPULAR_RIBBON_BY_PRODUCT[product]
+  const ribbonLabel = isUnlimited
+    ? (period === 'week' ? UNLIMITED_RIBBON_LABEL : null)
+    : (popularCfg && tier === popularCfg.tier ? popularCfg.label : null)
 
   const swapPrice = (fn: () => void) => {
     setPriceAnim(true)
@@ -195,9 +199,9 @@ export default function Plans({ userId }: Props) {
       )}
 
       <div className="pcard">
-        <div className="pcard-ribbon-wrap">
-          <span className={cn('pcard-ribbon', ribbonShown && 'show')} aria-hidden={!ribbonShown}>
-            <span className="pcard-ribbon-txt">Most Popular</span>
+        <div className={cn('pcard-ribbon-wrap', ribbonLabel && 'show')} aria-hidden={!ribbonLabel}>
+          <span className="pcard-ribbon">
+            <span className="pcard-ribbon-txt">{ribbonLabel ?? 'Popular'}</span>
           </span>
         </div>
         <div className="pcard-body">
