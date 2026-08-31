@@ -62,3 +62,12 @@ export function periodOf(plan: Plan): UPeriod {
 export const U_PERIOD_LABELS: Record<UPeriod, string> = { day: '/day', week: '/week', month: '/month' }
 
 export const POPULAR_TIER_GB = 135
+
+/* Which traffic tier gets the "Most Popular" label, per product.
+   (Unlimited Residential uses the weekly period instead — see Plans.tsx) */
+export const POPULAR_TIER_BY_PRODUCT: Partial<Record<ProductKey, number>> = {
+  residential: 65,
+  mobile: 135,
+  static_residential: 52,
+  datacenter: 240,
+}
