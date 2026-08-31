@@ -240,3 +240,77 @@ export function exhaustedEmail({ name, planName, limitGb }) {
     }),
   }
 }
+
+/* ── 4. KYC verification submitted ──────────────────────────────── */
+
+export function kycSubmittedEmail({ name }) {
+  const hi = name ? 'Hi ' + name + ',' : 'Hi there,'
+  return {
+    subject: 'KYC verification submitted — under review',
+    text: [
+      hi, '',
+      'Your identity documents have been successfully submitted and are currently under review.',
+      'Once your documents have been reviewed, you will receive an email and a notification in your account.', '',
+      'Open your dashboard: ' + APP_URL, '',
+      'You received this email because you have an account at SafestProxy (app.safestproxy.com). This is a service notification about your account, not marketing mail.',
+    ].join('\n'),
+    html: layout({
+      eyebrow: 'KYC verification',
+      title: 'Documents submitted',
+      intro: hi + ' your identity documents have been successfully submitted and are currently under review. Once reviewed, you will receive an email and a notification in your account.',
+      rows: [['Status', 'Under review']],
+      ctaLabel: 'Open Dashboard',
+      ctaUrl: APP_URL + '/profile',
+      footer: 'Reviews are usually completed quickly. Questions? Contact support@safestproxy.com.',
+    }),
+  }
+}
+
+/* ── 5. KYC verification approved ───────────────────────────────── */
+
+export function kycApprovedEmail({ name }) {
+  const hi = name ? 'Hi ' + name + ',' : 'Hi there,'
+  return {
+    subject: 'Your KYC verification has been approved',
+    text: [
+      hi, '',
+      'Your identity verification has been successfully approved. Your account is now verified.', '',
+      'Open your dashboard: ' + APP_URL, '',
+      'You received this email because you have an account at SafestProxy (app.safestproxy.com). This is a service notification about your account, not marketing mail.',
+    ].join('\n'),
+    html: layout({
+      eyebrow: 'KYC verification',
+      title: 'Identity verified',
+      intro: hi + ' your identity verification has been successfully approved. Your account is now fully verified.',
+      rows: [['Status', 'Verified']],
+      ctaLabel: 'Open Dashboard',
+      ctaUrl: APP_URL + '/profile',
+      footer: 'Thank you for completing verification. Questions? Contact support@safestproxy.com.',
+    }),
+  }
+}
+
+/* ── 6. KYC verification rejected ───────────────────────────────── */
+
+export function kycRejectedEmail({ name, reason }) {
+  const hi = name ? 'Hi ' + name + ',' : 'Hi there,'
+  return {
+    subject: 'Your KYC verification could not be approved',
+    text: [
+      hi, '',
+      'Your identity verification could not be approved. Please review the reason below and resubmit your documents.', '',
+      'Reason: ' + (reason || 'Document could not be verified.'), '',
+      'Resubmit from your profile: ' + APP_URL + '/profile', '',
+      'You received this email because you have an account at SafestProxy (app.safestproxy.com). This is a service notification about your account, not marketing mail.',
+    ].join('\n'),
+    html: layout({
+      eyebrow: 'KYC verification',
+      title: 'Verification rejected',
+      intro: hi + ' your identity verification could not be approved. Please review the reason below and resubmit your documents from your profile.',
+      rows: [['Status', 'Rejected'], ['Reason', reason || 'Document could not be verified.']],
+      ctaLabel: 'Resubmit Documents',
+      ctaUrl: APP_URL + '/profile',
+      footer: 'Make sure your document is valid, clearly visible and belongs to you. Questions? Contact support@safestproxy.com.',
+    }),
+  }
+}
