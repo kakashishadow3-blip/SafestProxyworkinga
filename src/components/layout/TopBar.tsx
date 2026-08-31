@@ -61,6 +61,8 @@ export default function TopBar({ subscription }: Props) {
   const [title, sub] = NAV_TITLES[location.pathname] ?? ['Dashboard', 'Your balance and recent activity']
 
   const unread = ntfs.filter(n => !n.is_read).length
+  // dropdown lists unread only — read notifications disappear from the bell
+  const visibleNtfs = ntfs.filter(n => !n.is_read)
 
   const loadNtfs = async () => {
     if (!user) return
@@ -159,14 +161,18 @@ export default function TopBar({ subscription }: Props) {
               )}
             </div>
             <div className="ntf-list">
-              {ntfLoading && ntfs.length === 0 && <div className="ntf-empty">Loading…</div>}
-              {!ntfLoading && ntfs.length === 0 && (
+              {ntfLoading && visibleNtfs.length === 0 && <div className="ntf-empty">Loading…</div>}
+              {!ntfLoading && visibleNtfs.length === 0 && (
                 <div className="ntf-empty">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></svg>
-                  <span>No notifications yet.<br />System notifications and updates will appear here.</span>
+                  {ntfs.length > 0 ? (
+                    <span>You're all caught up.<br />Read notifications are cleared from this list.</span>
+                  ) : (
+                    <span>No notifications yet.<br />System notifications and updates will appear here.</span>
+                  )}
                 </div>
               )}
-              {ntfs.map(n => (
+              {visibleNtfs.map(n => (
                 <button
                   key={n.id}
                   type="button"
