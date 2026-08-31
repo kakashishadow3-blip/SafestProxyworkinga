@@ -43,14 +43,21 @@ export default function AdminPanel() {
       supabase.from('contact_requests').select('*, profiles(email)').order('created_at', { ascending: false }),
       supabase.from('profiles').select('*').order('created_at', { ascending: false }),
       supabase.from('card_payment_attempts').select('*, profiles(email)').order('created_at', { ascending: false }).limit(300),
-      supabase.from('kyc_verifications').select('*, profiles(email, username, created_at)').order('submitted_at', { ascending: false }),
+      // kyc_verifications.user_id references auth.users (no FK to profiles) — a profiles()
+      // embed errors out and returns null, so fetch plain rows and merge profiles client-side
+      supabase.from('kyc_verifications').select('*').order('submitted_at', { ascending: false }),
     ])
     setOrders((o as Order[] | null) ?? [])
     setApiReqs((a as ApiRequest[] | null) ?? [])
     setContacts((c as ContactRequest[] | null) ?? [])
-    setUsers((u as Profile[] | null) ?? [])
+    const profs = (u as Profile[] | null) ?? []
+    setUsers(profs)
     setCardAttempts((ca as CardPaymentAttempt[] | null) ?? [])
-    setKycList((k as KycVerification[] | null) ?? [])
+    const profById = new Map(profs.map(p => [p.id, p]))
+    setKycList(((k as KycVerification[] | null) ?? []).map(row => {
+      const p = profById.get(row.user_id)
+      return { ...row, profiles: p ? { email: p.email, username: p.username, created_at: p.created_at } : null }
+    }))
   }, [])
 
   useEffect(() => { load() }, [load])
