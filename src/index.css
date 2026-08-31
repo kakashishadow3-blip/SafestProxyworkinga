@@ -835,31 +835,42 @@ pre.proxy-output:empty::before{
   background:var(--surface);border:1px solid var(--border);border-radius:20px;
   box-shadow:var(--shadow-md);overflow:visible;position:relative;
 }
-/* "Most Popular" label — top-right of the plan card, drawn in with a smooth
-   two-step sequence: 1) black label wipes open left→right (clip-path, no
-   distortion), 2) text fades + settles in. Hidden by default; pure transform/
-   opacity/clip transitions so there is never a layout jump or flicker. */
-.pcard-ribbon-wrap{position:absolute;top:-13px;right:32px;z-index:2;pointer-events:none;}
+/* Popular corner ribbon — diagonal strip across the plan card's top-right corner
+   (replaces the old pill badge). Entrance sequence: 1) strip wipes in along its
+   own diagonal via clip-path (no shape distortion), 2) text fades + settles in,
+   3) corner fold pops last. Pure clip/transform/opacity transitions — the card
+   never shifts, no jump, no flicker, no loop. Hidden unless .show is set. */
+.pcard-ribbon-wrap{
+  position:absolute;top:0;right:0;width:150px;height:150px;z-index:3;
+  overflow:hidden;pointer-events:none;border-top-right-radius:20px;
+  filter:drop-shadow(0 5px 10px rgba(20,22,29,.22));
+}
 .pcard-ribbon{
-  display:inline-flex;align-items:center;
-  font-family:var(--f-mono);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
-  background:var(--text-hi);color:#fff;
-  padding:6px 14px;border-radius:99px;box-shadow:0 6px 14px -4px rgba(20,22,29,.5);
-  clip-path:inset(-10px calc(100% + 10px) -10px -10px round 99px);
-  opacity:0;
-  transition:clip-path .38s cubic-bezier(.22,1,.36,1),opacity .24s ease;
+  position:absolute;top:32px;right:-58px;width:214px;transform:rotate(45deg);
+  background:#171A21;color:#fff;text-align:center;padding:8px 0;
+  font-family:var(--f-mono);font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  clip-path:inset(-12px calc(100% + 12px) -12px -12px);opacity:0;
+  transition:clip-path .45s cubic-bezier(.22,1,.36,1),opacity .3s ease;
 }
 .pcard-ribbon-txt{
-  display:inline-block;white-space:nowrap;
-  opacity:0;transform:translateX(-5px);
-  transition:opacity .26s ease,transform .3s cubic-bezier(.22,1,.36,1);
+  display:inline-block;white-space:nowrap;opacity:0;transform:translateX(-6px);
+  transition:opacity .28s ease,transform .32s cubic-bezier(.22,1,.36,1);
 }
-.pcard-ribbon.show{clip-path:inset(-10px -10px -10px -10px round 99px);opacity:1;}
-.pcard-ribbon.show .pcard-ribbon-txt{
+.pcard-ribbon-wrap::after{ /* corner fold — the ribbon "wraps behind" the card tip */
+  content:'';position:absolute;top:0;right:0;width:0;height:0;opacity:0;
+  border-style:solid;border-width:0 13px 13px 0;border-color:transparent #0C0E13 transparent transparent;
+  transition:opacity .22s ease;
+}
+.pcard-ribbon-wrap.show .pcard-ribbon{clip-path:inset(-12px -12px -12px -12px);opacity:1;}
+.pcard-ribbon-wrap.show .pcard-ribbon-txt{
   opacity:1;transform:translateX(0);
-  transition:opacity .26s ease .16s,transform .3s cubic-bezier(.22,1,.36,1) .16s;
+  transition:opacity .28s ease .22s,transform .32s cubic-bezier(.22,1,.36,1) .22s;
 }
-@media (max-width:720px){.pcard-ribbon-wrap{right:18px;}}
+.pcard-ribbon-wrap.show::after{opacity:1;transition:opacity .22s ease .34s;}
+@media (max-width:720px){
+  .pcard-ribbon-wrap{width:120px;height:120px;}
+  .pcard-ribbon{top:26px;right:-52px;width:186px;font-size:9px;padding:7px 0;}
+}
 .pcard-body{display:grid;grid-template-columns:340px 1px 1fr;gap:0;padding:40px;}
 .pcard-left{padding-right:36px;}
 .pcard-name{font-size:19px;font-weight:700;letter-spacing:-.01em;margin-bottom:16px;}
@@ -1385,7 +1396,6 @@ pre.proxy-output:empty::before{
 /* plans */
 [data-theme="dark"] .plan-tab.active{color:#101216;}
 [data-theme="dark"] .pcard{border-color:#262C39;box-shadow:0 18px 40px -18px rgba(0,0,0,.55);}
-[data-theme="dark"] .pcard-ribbon{color:#101216;}
 [data-theme="dark"] .pcard-cta{color:#101216;}
 [data-theme="dark"] .pcard-cta:hover{background:#FFFFFF;}
 
