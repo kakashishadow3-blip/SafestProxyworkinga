@@ -835,12 +835,31 @@ pre.proxy-output:empty::before{
   background:var(--surface);border:1px solid var(--border);border-radius:20px;
   box-shadow:var(--shadow-md);overflow:visible;position:relative;
 }
-.pcard-ribbon-wrap{position:absolute;top:-13px;left:32px;z-index:2;}
+/* "Most Popular" label — top-right of the plan card, drawn in with a smooth
+   two-step sequence: 1) black label wipes open left→right (clip-path, no
+   distortion), 2) text fades + settles in. Hidden by default; pure transform/
+   opacity/clip transitions so there is never a layout jump or flicker. */
+.pcard-ribbon-wrap{position:absolute;top:-13px;right:32px;z-index:2;pointer-events:none;}
 .pcard-ribbon{
+  display:inline-flex;align-items:center;
   font-family:var(--f-mono);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
   background:var(--text-hi);color:#fff;
   padding:6px 14px;border-radius:99px;box-shadow:0 6px 14px -4px rgba(20,22,29,.5);
+  clip-path:inset(-10px calc(100% + 10px) -10px -10px round 99px);
+  opacity:0;
+  transition:clip-path .38s cubic-bezier(.22,1,.36,1),opacity .24s ease;
 }
+.pcard-ribbon-txt{
+  display:inline-block;white-space:nowrap;
+  opacity:0;transform:translateX(-5px);
+  transition:opacity .26s ease,transform .3s cubic-bezier(.22,1,.36,1);
+}
+.pcard-ribbon.show{clip-path:inset(-10px -10px -10px -10px round 99px);opacity:1;}
+.pcard-ribbon.show .pcard-ribbon-txt{
+  opacity:1;transform:translateX(0);
+  transition:opacity .26s ease .16s,transform .3s cubic-bezier(.22,1,.36,1) .16s;
+}
+@media (max-width:720px){.pcard-ribbon-wrap{right:18px;}}
 .pcard-body{display:grid;grid-template-columns:340px 1px 1fr;gap:0;padding:40px;}
 .pcard-left{padding-right:36px;}
 .pcard-name{font-size:19px;font-weight:700;letter-spacing:-.01em;margin-bottom:16px;}
