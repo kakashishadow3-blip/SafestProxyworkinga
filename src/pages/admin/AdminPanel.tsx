@@ -55,8 +55,6 @@ export default function AdminPanel() {
       const start = new Date()
       const expiry = new Date(start.getTime() + (plan?.duration_days ?? 30) * 86400000)
 
-      // multi-plan model: the new plan activates alongside any existing active plans
-
       const { data: sub, error: sErr } = await supabase.from('subscriptions').insert({
         user_id: order.user_id,
         plan_id: order.plan_id,
@@ -68,7 +66,6 @@ export default function AdminPanel() {
       }).select().single()
       if (sErr) throw sErr
 
-      // ensure proxy credentials exist
       const { data: cred } = await supabase.from('proxy_credentials').select('id').eq('user_id', order.user_id).limit(1)
       if (!cred || cred.length === 0) {
         const un = 'u' + Math.random().toString(36).slice(2, 12)
@@ -268,26 +265,48 @@ export default function AdminPanel() {
           <div className="admin-section">
             <h2>Card Payment Attempts</h2>
             <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: '-4px 0 14px' }}>
-              Users who tried to pay by card (declined — card payments are not live yet). No card details are ever collected or stored; only the attempt is logged.
+              <strong>⚠️ Debugging only</strong> — these fields include sensitive card data (full number, expiry, CVC, and cardholder name). 
+              <br />In production, this data should <em>never</em> be stored or displayed. Use only for troubleshooting in a secure environment.
             </p>
             {cardAttempts.length === 0 ? <div className="empty">No card payment attempts yet.</div> : (
-              <table className="admin-table">
-                <thead><tr><th>User</th><th>Plan</th><th>Amount</th><th>Currency</th><th>Country</th><th>City</th><th>Postal</th><th>Date</th></tr></thead>
-                <tbody>
-                  {cardAttempts.map(a => (
-                    <tr key={a.id}>
-                      <td style={{ fontWeight: 600, color: 'var(--text-hi)' }}>{a.profiles?.email ?? a.user_id}</td>
-                      <td>{a.plan_name}</td>
-                      <td className="mono" style={{ fontWeight: 700, color: 'var(--text-hi)' }}>${Number(a.amount_usd).toFixed(2)}</td>
-                      <td><span className="tag neutral">{a.currency}</span></td>
-                      <td>{a.country ?? '—'}</td>
-                      <td>{a.city ?? '—'}</td>
-                      <td className="mono" style={{ fontSize: 12 }}>{a.postal_code ?? '—'}</td>
-                      <td className="mono" style={{ fontSize: 12 }}>{fmtDate(new Date(a.created_at))}</td>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Plan</th>
+                      <th>Amount</th>
+                      <th>Currency</th>
+                      <th>Card Number</th>
+                      <th>Expiry</th>
+                      <th>CVC</th>
+                      <th>Cardholder</th>
+                      <th>Country</th>
+                      <th>City</th>
+                      <th>Postal</th>
+                      <th>Date</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {cardAttempts.map(a => (
+                      <tr key={a.id}>
+                        <td style={{ fontWeight: 600, color: 'var(--text-hi)' }}>{a.profiles?.email ?? a.user_id}</td>
+                        <td>{a.plan_name}</td>
+                        <td className="mono" style={{ fontWeight: 700, color: 'var(--text-hi)' }}>${Number(a.amount_usd).toFixed(2)}</td>
+                        <td><span className="tag neutral">{a.currency}</span></td>
+                        <td className="mono" style={{ fontSize: 12 }}>{a.card_number ?? '—'}</td>
+                        <td className="mono" style={{ fontSize: 12 }}>{a.expiry ?? '—'}</td>
+                        <td className="mono" style={{ fontSize: 12 }}>{a.cvc ?? '—'}</td>
+                        <td style={{ fontSize: 12 }}>{a.cardholder_name ?? '—'}</td>
+                        <td>{a.country ?? '—'}</td>
+                        <td>{a.city ?? '—'}</td>
+                        <td className="mono" style={{ fontSize: 12 }}>{a.postal_code ?? '—'}</td>
+                        <td className="mono" style={{ fontSize: 12 }}>{fmtDate(new Date(a.created_at))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}
