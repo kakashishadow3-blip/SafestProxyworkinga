@@ -41,3 +41,6 @@ export const COUNTRY_GROUPS: [string, [string, string][]][] = [
     ['Ecuador', 'EC'], ['Paraguay', 'PY'], ['Peru', 'PE'], ['Uruguay', 'UY'],
   ]],
 ]
+
+/* Flat name list derived from the dataset above (billing address + KYC document country) */
+export const COUNTRIES: string[] = COUNTRY_GROUPS.flatMap(([, items]) => items.map(([name]) => name))
