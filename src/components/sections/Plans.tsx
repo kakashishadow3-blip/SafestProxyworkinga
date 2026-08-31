@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import PaymentModal from '@/components/ui/PaymentModal'
 import {
   PRODUCT_META, PRODUCT_ORDER, ProductKey, UPeriod, U_PERIOD_LABELS,
-  productOf, tierLabel, tierLong, threadsOf, periodOf, POPULAR_TIER_GB,
+  productOf, tierLabel, tierLong, threadsOf, periodOf, POPULAR_TIER_GB, POPULAR_TIER_BY_PRODUCT,
 } from '@/lib/plans'
 import type { Plan } from '@/types'
 
@@ -74,7 +74,9 @@ export default function Plans({ userId }: Props) {
 
   const price = selectedPlan ? Number(selectedPlan.price) : null
   const meta = PRODUCT_META[product]
-  const ribbonShown = isUnlimited ? period === 'week' : tier === POPULAR_TIER_GB
+  // "Most Popular" label: one specific tier per product (Unlimited → weekly period)
+  const popularTier = POPULAR_TIER_BY_PRODUCT[product]
+  const ribbonShown = isUnlimited ? period === 'week' : popularTier !== undefined && tier === popularTier
 
   const swapPrice = (fn: () => void) => {
     setPriceAnim(true)
@@ -194,7 +196,9 @@ export default function Plans({ userId }: Props) {
 
       <div className="pcard">
         <div className="pcard-ribbon-wrap">
-          <span className={cn('pcard-ribbon', ribbonShown && 'show')}>Most Popular</span>
+          <span className={cn('pcard-ribbon', ribbonShown && 'show')} aria-hidden={!ribbonShown}>
+            <span className="pcard-ribbon-txt">Most Popular</span>
+          </span>
         </div>
         <div className="pcard-body">
           <div className="pcard-left">
