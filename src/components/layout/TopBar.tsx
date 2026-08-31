@@ -3,7 +3,10 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
-import type { Subscription } from '@/types'
+import {
+  fetchNotifications, markNotificationRead, markAllNotificationsRead,
+} from '@/lib/notifications'
+import type { AppNotification, Subscription } from '@/types'
 
 export const NAV_TITLES: Record<string, [string, string]> = {
   '/': ['Dashboard', 'Your balance and recent activity'],
@@ -18,6 +21,30 @@ interface Props {
   subscription: Subscription | null
 }
 
+/* small relative timestamp: "just now", "12m ago", "3h ago", "2d ago", else date */
+function timeAgo(iso: string) {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 60) return 'just now'
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  if (s < 7 * 86400) return `${Math.floor(s / 86400)}d ago`
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+const NTF_ICONS: Record<string, string> = {
+  plan_expired: 'M12 8v4l3 3M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20z',
+  low_data: 'M12 3v3M5.6 5.6l2.2 2.2M3 12h3M12 21a9 9 0 0 0 9-9h-3a6 6 0 1 1-12 0H3a9 9 0 0 0 9 9z',
+  data_exhausted: 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
+  kyc: 'M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4zM9 12l2 2 4-4',
+}
+
+function ntfIcon(type: string) {
+  const d = NTF_ICONS[type.startsWith('kyc') ? 'kyc' : type] ?? 'M12 8v4M12 16h.01M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20z'
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
+  )
+}
+
 export default function TopBar({ subscription }: Props) {
   const { profile, user, signOut } = useAuth()
   const [theme, toggleTheme] = useTheme()
@@ -26,7 +53,23 @@ export default function TopBar({ subscription }: Props) {
   const location = useLocation()
   const navigate = useNavigate()
 
+  const [ntfOpen, setNtfOpen] = useState(false)
+  const [ntfs, setNtfs] = useState<AppNotification[]>([])
+  const [ntfLoading, setNtfLoading] = useState(false)
+  const ntfRef = useRef<HTMLDivElement>(null)
+
   const [title, sub] = NAV_TITLES[location.pathname] ?? ['Dashboard', 'Your balance and recent activity']
+
+  const unread = ntfs.filter(n => !n.is_read).length
+
+  const loadNtfs = async () => {
+    if (!user) return
+    setNtfLoading(true)
+    setNtfs(await fetchNotifications(user.id))
+    setNtfLoading(false)
+  }
+
+  useEffect(() => { loadNtfs() }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!menuOpen) return
@@ -36,6 +79,32 @@ export default function TopBar({ subscription }: Props) {
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [menuOpen])
+
+  useEffect(() => {
+    if (!ntfOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (ntfRef.current && !ntfRef.current.contains(e.target as Node)) setNtfOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [ntfOpen])
+
+  const openNtf = async (n: AppNotification) => {
+    if (!n.is_read) {
+      setNtfs(list => list.map(x => (x.id === n.id ? { ...x, is_read: true } : x)))
+      await markNotificationRead(n.id)
+    }
+    if (n.action_url) {
+      setNtfOpen(false)
+      navigate(n.action_url)
+    }
+  }
+
+  const markAll = async () => {
+    if (!user || unread === 0) return
+    setNtfs(list => list.map(x => ({ ...x, is_read: true })))
+    await markAllNotificationsRead(user.id)
+  }
 
   const name = profile?.username || user?.email?.split('@')[0] || 'User'
   const email = user?.email ?? ''
@@ -68,6 +137,55 @@ export default function TopBar({ subscription }: Props) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
           )}
         </button>
+
+        <div className={cn('ntf-wrap', ntfOpen && 'open')} ref={ntfRef}>
+          <button
+            className="tb-icon-btn ntf-btn"
+            type="button"
+            aria-label={unread > 0 ? `Notifications (${unread} unread)` : 'Notifications'}
+            aria-expanded={ntfOpen}
+            title="Notifications"
+            onClick={() => { setNtfOpen(o => !o); if (!ntfOpen) loadNtfs() }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></svg>
+            {unread > 0 && <span className="ntf-badge">{unread > 9 ? '9+' : unread}</span>}
+          </button>
+
+          <div className="ntf-dropdown">
+            <div className="ntf-head">
+              <span className="ntf-head-t">Notifications{unread > 0 ? ` (${unread})` : ''}</span>
+              {unread > 0 && (
+                <button type="button" className="ntf-mark-all" onClick={markAll}>Mark all as read</button>
+              )}
+            </div>
+            <div className="ntf-list">
+              {ntfLoading && ntfs.length === 0 && <div className="ntf-empty">Loading…</div>}
+              {!ntfLoading && ntfs.length === 0 && (
+                <div className="ntf-empty">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></svg>
+                  <span>No notifications yet.<br />System notifications and updates will appear here.</span>
+                </div>
+              )}
+              {ntfs.map(n => (
+                <button
+                  key={n.id}
+                  type="button"
+                  className={cn('ntf-item', !n.is_read && 'unread')}
+                  onClick={() => openNtf(n)}
+                >
+                  <span className={cn('ntf-ic', n.type)}>{ntfIcon(n.type)}</span>
+                  <span className="ntf-body">
+                    <span className="ntf-t">{n.title}</span>
+                    <span className="ntf-m">{n.message}</span>
+                    <span className="ntf-time">{timeAgo(n.created_at)}</span>
+                  </span>
+                  {!n.is_read && <span className="ntf-dot" />}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
         <span className={cn('badge-plan', !active && 'warn')} style={{ textTransform: 'uppercase' }}>{badgeText}</span>
 
         <div className={cn('user-menu-wrap', menuOpen && 'open')} ref={menuRef}>
