@@ -5,9 +5,18 @@ import { showToast } from '@/lib/toast'
 import { cn, fmtDate } from '@/lib/utils'
 import { subIsActive } from '@/lib/subscription'
 import { INV_STATUS, invoicesFromOrders, generateInvoicePdf } from '@/lib/invoice'
-import type { Order, Profile, Subscription } from '@/types'
+import KycModal from '@/components/ui/KycModal'
+import type { KycVerification, Order, Profile, Subscription } from '@/types'
 
-type PTab = 'account' | 'payments' | 'plans'
+type PTab = 'account' | 'payments' | 'plans' | 'kyc'
+
+/* "August 31, 2026 — 01:42 PM" */
+const fmtCreated = (iso?: string | null) => {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) +
+    ' — ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+}
 
 interface Props {
   userId?: string // admin viewing another user's profile — read-only
@@ -32,6 +41,20 @@ export default function ProfileSection({ userId }: Props) {
   const [dataLoading, setDataLoading] = useState(false)
   const [pdfId, setPdfId] = useState<string | null>(null)
 
+  const [kyc, setKyc] = useState<KycVerification | null>(null)
+  const [kycLoading, setKycLoading] = useState(false)
+  const [kycLoaded, setKycLoaded] = useState(false)
+  const [kycModalOpen, setKycModalOpen] = useState(false)
+
+  const loadKyc = async () => {
+    if (!uid) return
+    setKycLoading(true)
+    const { data } = await supabase.from('kyc_verifications').select('*').eq('user_id', uid).maybeSingle()
+    setKyc((data as KycVerification | null) ?? null)
+    setKycLoading(false)
+    setKycLoaded(true)
+  }
+
   useEffect(() => {
     if (readOnly && userId) {
       supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
@@ -50,7 +73,7 @@ export default function ProfileSection({ userId }: Props) {
 
   /* Orders + subscriptions load lazily the first time a data tab opens */
   useEffect(() => {
-    if (tab === 'account' || !uid || orders.length > 0 || subs.length > 0 || dataLoading) return
+    if (tab === 'account' || tab === 'kyc' || !uid || orders.length > 0 || subs.length > 0 || dataLoading) return
     setDataLoading(true)
     Promise.all([
       supabase.from('orders').select('*, plans(*)').eq('user_id', uid).order('created_at', { ascending: false }),
@@ -60,6 +83,12 @@ export default function ProfileSection({ userId }: Props) {
       setSubs((s as Subscription[] | null) ?? [])
       setDataLoading(false)
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, uid])
+
+  /* KYC record loads the first time the KYC tab opens */
+  useEffect(() => {
+    if (tab === 'kyc' && uid && !kycLoaded && !kycLoading) loadKyc()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, uid])
 
@@ -153,6 +182,7 @@ export default function ProfileSection({ userId }: Props) {
         <button type="button" className={cn('plan-tab', tab === 'account' && 'active')} onClick={() => setTab('account')}>Account</button>
         <button type="button" className={cn('plan-tab', tab === 'payments' && 'active')} onClick={() => setTab('payments')}>Payment History</button>
         <button type="button" className={cn('plan-tab', tab === 'plans' && 'active')} onClick={() => setTab('plans')}>Plan Details</button>
+        <button type="button" className={cn('plan-tab', tab === 'kyc' && 'active')} onClick={() => setTab('kyc')}>KYC Verification</button>
       </div>
 
       {/* ================= Account ================= */}
@@ -175,6 +205,15 @@ export default function ProfileSection({ userId }: Props) {
           <div className="form-row">
             <label>Username</label>
             <input type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="Your display name" autoComplete="off" disabled={readOnly} />
+          </div>
+          <div className="form-row">
+            <label>Account Created</label>
+            <input
+              type="text"
+              value={fmtCreated(readOnly ? profile?.created_at : (user?.created_at ?? profile?.created_at))}
+              disabled
+              readOnly
+            />
           </div>
           {!readOnly && (
             <div className="field-grid">
@@ -275,6 +314,98 @@ export default function ProfileSection({ userId }: Props) {
             {!dataLoading && expiredSubs.map(s => planRow(s, false))}
           </div>
         </>
+      )}
+      {/* ================= KYC Verification ================= */}
+      {tab === 'kyc' && (
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <h3>KYC Verification</h3>
+              <p>Verify your identity to secure and verify your account.</p>
+            </div>
+            {!kycLoading && (
+              <span className={cn('tag dot',
+                !kyc ? 'neutral' : kyc.status === 'approved' ? 'ok' : kyc.status === 'under_review' ? 'warn' : 'bad')}>
+                {!kyc ? 'Not Verified' : kyc.status === 'approved' ? 'Verified' : kyc.status === 'under_review' ? 'Under Review' : 'Rejected'}
+              </span>
+            )}
+          </div>
+
+          {kycLoading && <div className="empty">Loading verification status…</div>}
+
+          {!kycLoading && !kyc && (
+            <div className="kyc-state">
+              <div className="kyc-state-ic">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z" /><path d="M9 12l2 2 4-4" /></svg>
+              </div>
+              <div className="kyc-state-t">Your account is not verified yet</div>
+              <p className="kyc-state-s">
+                Complete a quick identity check using a valid government-issued document.
+                It only takes a couple of minutes.
+              </p>
+              {!readOnly && (
+                <button className="btn btn-primary" type="button" onClick={() => setKycModalOpen(true)}>Verify Account</button>
+              )}
+            </div>
+          )}
+
+          {!kycLoading && kyc?.status === 'under_review' && (
+            <div className="kyc-state">
+              <div className="kyc-state-ic warn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+              </div>
+              <div className="kyc-state-t">Verification Under Review</div>
+              <p className="kyc-state-s">
+                Your documents have been submitted and are currently being reviewed.
+                You will be notified once the review is complete.
+              </p>
+              <div className="myplan-meta">Submitted {kyc.submitted_at ? fmtCreated(kyc.submitted_at) : '—'} · {kyc.country ?? ''}</div>
+            </div>
+          )}
+
+          {!kycLoading && kyc?.status === 'approved' && (
+            <div className="kyc-state">
+              <div className="kyc-state-ic ok">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z" /><path d="M9 12l2 2 4-4" /></svg>
+              </div>
+              <div className="kyc-state-t">Identity Verified ✓</div>
+              <p className="kyc-state-s">Your identity has been successfully verified.</p>
+              <div className="myplan-meta">Verified {kyc.reviewed_at ? fmtCreated(kyc.reviewed_at) : ''} · {kyc.country ?? ''}</div>
+            </div>
+          )}
+
+          {!kycLoading && kyc?.status === 'rejected' && (
+            <div className="kyc-state">
+              <div className="kyc-state-ic bad">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" /></svg>
+              </div>
+              <div className="kyc-state-t">Verification Rejected</div>
+              <p className="kyc-state-s">
+                Your identity verification could not be approved. Please review the reason below and resubmit your documents.
+              </p>
+              {kyc.rejection_reason && (
+                <div className="kyc-reason">
+                  <span className="kyc-reason-l">Reason for rejection</span>
+                  {kyc.rejection_reason}
+                </div>
+              )}
+              {!readOnly && (
+                <button className="btn btn-primary" type="button" onClick={() => setKycModalOpen(true)}>Resubmit Documents</button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {uid && (
+        <KycModal
+          open={kycModalOpen}
+          userId={uid}
+          initialCountry={kyc?.country ?? undefined}
+          startAtUpload={kyc?.status === 'rejected'}
+          onClose={() => setKycModalOpen(false)}
+          onSubmitted={loadKyc}
+        />
       )}
     </section>
   )
