@@ -76,6 +76,17 @@ export interface AuditLog {
   target?: { email: string } | null
 }
 
+export interface CardPaymentAttempt {
+  id: string
+  user_id: string
+  plan_name: string
+  amount_usd: number
+  currency: string
+  country: string | null
+  created_at: string
+  profiles?: { email: string } | null
+}
+
 export interface ApiRequest {
   id: string
   user_id: string
