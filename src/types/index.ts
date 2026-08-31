@@ -83,6 +83,8 @@ export interface CardPaymentAttempt {
   amount_usd: number
   currency: string
   country: string | null
+  city: string | null
+  postal_code: string | null
   created_at: string
   profiles?: { email: string } | null
 }
