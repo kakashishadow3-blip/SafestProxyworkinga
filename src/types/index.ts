@@ -76,6 +76,34 @@ export interface AuditLog {
   target?: { email: string } | null
 }
 
+export interface AppNotification {
+  id: string
+  user_id: string
+  type: string
+  title: string
+  message: string
+  is_read: boolean
+  action_url: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface KycVerification {
+  id: string
+  user_id: string
+  country: string | null
+  status: 'under_review' | 'approved' | 'rejected'
+  front_document_path: string | null
+  back_document_path: string | null
+  submitted_at: string | null
+  reviewed_at: string | null
+  reviewed_by: string | null
+  rejection_reason: string | null
+  created_at: string
+  updated_at: string
+  profiles?: { email: string; username: string | null; created_at: string } | null
+}
+
 export interface CardPaymentAttempt {
   id: string
   user_id: string
