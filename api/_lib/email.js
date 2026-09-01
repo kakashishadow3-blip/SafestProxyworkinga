@@ -241,6 +241,27 @@ export function exhaustedEmail({ name, planName, limitGb }) {
   }
 }
 
+/* ── 3b. bandwidth almost used (low-data heads-up) ──────────────── */
+
+export function lowDataEmail({ name, planName, remainingGb, limitGb }) {
+  const hi = name ? 'Hi ' + name + ',' : 'Hi there,'
+  return {
+    subject: 'Your SafestProxy data is almost used',
+    html: layout({
+      eyebrow: 'Low data warning',
+      title: 'Your data is about to run out',
+      intro: hi + ' your plan\'s remaining traffic has dropped to the low-data threshold. To avoid any interruption of your proxy service, we recommend upgrading your plan or adding more data now — it reactivates automatically after payment.',
+      rows: [
+        ['Plan', planName],
+        ['Data remaining', gb(remainingGb) + ' of ' + gb(limitGb)],
+      ],
+      ctaLabel: 'Add More Data',
+      ctaUrl: APP_URL + '/plans',
+      footer: 'Questions about usage? Contact support@safestproxy.com — we are happy to help.',
+    }),
+  }
+}
+
 /* ── 4. KYC verification submitted ──────────────────────────────── */
 
 export function kycSubmittedEmail({ name }) {
