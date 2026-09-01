@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { logAudit } from '@/lib/audit'
 import { cn } from '@/lib/utils'
 import { showToast } from '@/lib/toast'
+import { LOW_DATA_THRESHOLD_GB } from '@/lib/notifications'
 import Overview from '@/components/sections/Overview'
 import ProxyAccess from '@/components/sections/ProxyAccess'
 import ApiManagement from '@/components/sections/ApiManagement'
@@ -153,10 +154,35 @@ export default function AdminUserView() {
       await logAudit(admin.id, userId, 'update_subscription', 'subscription', savedId,
         editing ? `${editing.plans?.name ?? '—'} · ${editing.status} · ${editing.bandwidth_used_gb}/${editing.bandwidth_limit_gb} GB` : 'none',
         `${plan?.name ?? '—'} · ${fSubStatus} · ${fUsed}/${fLimit} GB · expires ${fExpiry || '—'}`)
-      showToast('ok', 'Subscription saved', `${plan?.name ?? 'Custom'} → ${fSubStatus}`)
+      /* If the save put the plan into a notify-worthy state (expired / used up /
+         low data), the user is informed instantly — no waiting for the cron */
+      let emailNote = ''
+      const lim = Number(fLimit) || 0
+      const usd = Number(fUsed) || 0
+      if (savedId && (fSubStatus === 'expired' || (lim > 0 && lim - usd <= LOW_DATA_THRESHOLD_GB))) {
+        emailNote = (await firePlanEvent(savedId)) ? ' · user notified by email' : ''
+      }
+      showToast('ok', 'Subscription saved', `${plan?.name ?? 'Custom'} → ${fSubStatus}${emailNote}`)
       await load(savedId || undefined)
     }
     setSaving(null)
+  }
+
+  /* Instant user notification + email for whatever state a subscription is in
+     right now (expired / data used up / low data) — no waiting for the hourly cron.
+     Returns the event name when an email went out, else null. */
+  const firePlanEvent = async (subId: string): Promise<string | null> => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return null
+      const res = await fetch('/api/plan-event-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ subscription_id: subId }),
+      })
+      const json = await res.json().catch(() => null)
+      return json?.emailed ? (json.event as string) : null
+    } catch { return null }
   }
 
   /* Quick per-plan status toggle from the Active Plans list (expire ↔ reactivate) */
@@ -168,7 +194,12 @@ export default function AdminUserView() {
     else {
       await logAudit(admin.id, userId, 'update_subscription_status', 'subscription', sub.id,
         `${sub.plans?.name ?? '—'} · ${sub.status}`, `${sub.plans?.name ?? '—'} · ${status}`)
-      showToast('ok', status === 'expired' ? 'Plan expired' : 'Plan activated', sub.plans?.name ?? '')
+      let emailNote = ''
+      if (status === 'expired') {
+        /* manual expire → user gets the expiration email + notification immediately */
+        emailNote = (await firePlanEvent(sub.id)) ? ' · user notified by email' : ''
+      }
+      showToast('ok', status === 'expired' ? 'Plan expired' : 'Plan activated', (sub.plans?.name ?? '') + emailNote)
       await load(sub.id)
     }
     setSaving(null)
