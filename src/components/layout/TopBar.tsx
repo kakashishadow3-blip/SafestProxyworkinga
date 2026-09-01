@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { useTheme } from '@/lib/theme'
@@ -45,6 +45,10 @@ function ntfIcon(type: string) {
   )
 }
 
+/* Long messages show as a short preview + "Read more" (expandable in place).
+   Works automatically for every notification type — purely length-based. */
+const NTF_PREVIEW_LEN = 110
+
 export default function TopBar({ subscription }: Props) {
   const { profile, user, signOut } = useAuth()
   const [theme, toggleTheme] = useTheme()
@@ -56,6 +60,7 @@ export default function TopBar({ subscription }: Props) {
   const [ntfOpen, setNtfOpen] = useState(false)
   const [ntfs, setNtfs] = useState<AppNotification[]>([])
   const [ntfLoading, setNtfLoading] = useState(false)
+  const [expandedNtfs, setExpandedNtfs] = useState<Set<string>>(new Set())
   const ntfRef = useRef<HTMLDivElement>(null)
 
   const [title, sub] = NAV_TITLES[location.pathname] ?? ['Dashboard', 'Your balance and recent activity']
@@ -64,14 +69,31 @@ export default function TopBar({ subscription }: Props) {
   // dropdown lists unread only — read notifications disappear from the bell
   const visibleNtfs = ntfs.filter(n => !n.is_read)
 
-  const loadNtfs = async () => {
+  const loadNtfs = useCallback(async () => {
     if (!user) return
     setNtfLoading(true)
     setNtfs(await fetchNotifications(user.id))
     setNtfLoading(false)
-  }
+  }, [user])
 
-  useEffect(() => { loadNtfs() }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  /* Notification state syncs automatically the moment the dashboard loads —
+     the unread badge never waits for a bell click. 'ntf-synced' re-fetches
+     right after plan-sync creates anything new, and a light 60s poll keeps
+     the badge fresh while the dashboard stays open. */
+  useEffect(() => {
+    loadNtfs()
+    window.addEventListener('ntf-synced', loadNtfs)
+    const poll = setInterval(loadNtfs, 60000)
+    return () => { window.removeEventListener('ntf-synced', loadNtfs); clearInterval(poll) }
+  }, [loadNtfs])
+
+  const toggleNtfExpand = (id: string) => {
+    setExpandedNtfs(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!menuOpen) return
@@ -172,22 +194,39 @@ export default function TopBar({ subscription }: Props) {
                   )}
                 </div>
               )}
-              {visibleNtfs.map(n => (
-                <button
-                  key={n.id}
-                  type="button"
-                  className={cn('ntf-item', !n.is_read && 'unread')}
-                  onClick={() => openNtf(n)}
-                >
-                  <span className={cn('ntf-ic', n.type)}>{ntfIcon(n.type)}</span>
-                  <span className="ntf-body">
-                    <span className="ntf-t">{n.title}</span>
-                    <span className="ntf-m">{n.message}</span>
-                    <span className="ntf-time">{timeAgo(n.created_at)}</span>
-                  </span>
-                  {!n.is_read && <span className="ntf-dot" />}
-                </button>
-              ))}
+              {visibleNtfs.map(n => {
+                const isLong = n.message.length > NTF_PREVIEW_LEN
+                const isExpanded = expandedNtfs.has(n.id)
+                return (
+                  <button
+                    key={n.id}
+                    type="button"
+                    className={cn('ntf-item', !n.is_read && 'unread')}
+                    onClick={() => openNtf(n)}
+                  >
+                    <span className={cn('ntf-ic', n.type)}>{ntfIcon(n.type)}</span>
+                    <span className="ntf-body">
+                      <span className="ntf-t">{n.title}</span>
+                      <span className={cn('ntf-m', isExpanded && 'expand')}>
+                        {isLong && !isExpanded ? n.message.slice(0, NTF_PREVIEW_LEN).trimEnd() + '…' : n.message}
+                      </span>
+                      {isLong && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          className="ntf-more"
+                          onClick={e => { e.stopPropagation(); toggleNtfExpand(n.id) }}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); toggleNtfExpand(n.id) } }}
+                        >
+                          {isExpanded ? 'Show less' : 'Read more'}
+                        </span>
+                      )}
+                      <span className="ntf-time">{timeAgo(n.created_at)}</span>
+                    </span>
+                    {!n.is_read && <span className="ntf-dot" />}
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>
