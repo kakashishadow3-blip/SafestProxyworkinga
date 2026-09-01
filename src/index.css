@@ -841,14 +841,14 @@ pre.proxy-output:empty::before{
    3) corner fold pops last. Pure clip/transform/opacity transitions — the card
    never shifts, no jump, no flicker, no loop. Hidden unless .show is set. */
 .pcard-ribbon-wrap{
-  position:absolute;top:0;right:0;width:185px;height:185px;z-index:3;
+  position:absolute;top:0;right:0;width:200px;height:200px;z-index:3;
   overflow:hidden;pointer-events:none;
   filter:drop-shadow(0 6px 12px rgba(20,22,29,.24));
 }
 .pcard-ribbon{
-  position:absolute;top:40px;right:-65px;width:260px;transform:rotate(45deg);
-  background:#171A21;color:#fff;text-align:center;padding:12px 0;
-  font-family:var(--f-mono);font-size:11px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;
+  position:absolute;top:44px;right:-82px;width:300px;transform:rotate(45deg);
+  background:#171A21;color:#fff;text-align:center;padding:14px 0;
+  font-family:var(--f-mono);font-size:12px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;
   clip-path:inset(-12px calc(100% + 12px) -12px -12px);opacity:0;
   transition:clip-path .45s cubic-bezier(.22,1,.36,1),opacity .3s ease;
 }
@@ -858,19 +858,19 @@ pre.proxy-output:empty::before{
 }
 .pcard-ribbon-wrap::after{ /* corner fold — the ribbon "wraps behind" the card tip */
   content:'';position:absolute;top:0;right:0;width:0;height:0;opacity:0;
-  border-style:solid;border-width:0 18px 18px 0;border-color:transparent #0C0E13 transparent transparent;
+  border-style:solid;border-width:0 20px 20px 0;border-color:transparent #0C0E13 transparent transparent;
   transition:opacity .22s ease;
 }
 .pcard-ribbon-wrap.show .pcard-ribbon{clip-path:inset(-12px -12px -12px -12px);opacity:1;}
 .pcard-ribbon-wrap.show .pcard-ribbon-txt{
   opacity:1;transform:translateX(0);
-  transition:opacity .28s ease .22s,transform .32s cubic-bezier(.22,1,.36,1) .22s;
+  transition:opacity .32s ease .22s,transform .32s cubic-bezier(.22,1,.36,1) .22s;
 }
 .pcard-ribbon-wrap.show::after{opacity:1;transition:opacity .22s ease .34s;}
 @media (max-width:720px){
-  .pcard-ribbon-wrap{width:140px;height:140px;}
-  .pcard-ribbon{top:29px;right:-55px;width:200px;font-size:9px;padding:9px 0;letter-spacing:.13em;}
-  .pcard-ribbon-wrap::after{border-width:0 14px 14px 0;}
+  .pcard-ribbon-wrap{width:150px;height:150px;}
+  .pcard-ribbon{top:30px;right:-62px;width:220px;font-size:10px;padding:10px 0;letter-spacing:.13em;}
+  .pcard-ribbon-wrap::after{border-width:0 15px 15px 0;}
 }
 .pcard-body{display:grid;grid-template-columns:340px 1px 1fr;gap:0;padding:40px;}
 .pcard-left{padding-right:36px;}
