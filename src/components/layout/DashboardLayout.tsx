@@ -33,8 +33,11 @@ export default function DashboardLayout() {
       .order('created_at', { ascending: false })
     const subs = (data as Subscription[] | null) ?? []
     setSubscriptions(subs)
-    /* automatic plan notifications (expired / low-data / exhausted) — deduped server-side */
+    /* automatic plan notifications (expired / low-data / exhausted) — deduped at DB level.
+       When the sync finishes, tell the bell to re-fetch so the unread badge updates
+       immediately without the user clicking anything. */
     syncPlanNotifications(user.id, subs)
+      .finally(() => window.dispatchEvent(new Event('ntf-synced')))
   }, [user])
 
   useEffect(() => { refreshSubscription() }, [refreshSubscription])
