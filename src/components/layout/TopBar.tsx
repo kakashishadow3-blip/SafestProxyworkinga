@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import {
   fetchNotifications, markNotificationRead, markAllNotificationsRead,
 } from '@/lib/notifications'
-import type { AppNotification, Subscription } from '@/types'
+import type { AppNotification } from '@/types'
 
 export const NAV_TITLES: Record<string, [string, string]> = {
   '/': ['Dashboard', 'Your balance and recent activity'],
@@ -18,7 +18,7 @@ export const NAV_TITLES: Record<string, [string, string]> = {
 }
 
 interface Props {
-  subscription: Subscription | null
+  subscription?: unknown // plan badge removed from the top bar — prop kept for call-site compatibility
 }
 
 /* small relative timestamp: "just now", "12m ago", "3h ago", "2d ago", else date */
@@ -49,7 +49,7 @@ function ntfIcon(type: string) {
    Works automatically for every notification type — purely length-based. */
 const NTF_PREVIEW_LEN = 110
 
-export default function TopBar({ subscription }: Props) {
+export default function TopBar(_props: Props) {
   const { profile, user, signOut } = useAuth()
   const [theme, toggleTheme] = useTheme()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -132,9 +132,6 @@ export default function TopBar({ subscription }: Props) {
 
   const name = profile?.username || user?.email?.split('@')[0] || 'User'
   const email = user?.email ?? ''
-  const active = !!subscription && subscription.status === 'active'
-  const badgeText = active ? (subscription?.plans?.name ?? 'Active') : 'Non-Active'
-
   const avatarIcon = (size = 18) => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: size, height: size }}>
       <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
@@ -230,8 +227,6 @@ export default function TopBar({ subscription }: Props) {
             </div>
           </div>
         </div>
-
-        <span className={cn('badge-plan', !active && 'warn')} style={{ textTransform: 'uppercase' }}>{badgeText}</span>
 
         <div className={cn('user-menu-wrap', menuOpen && 'open')} ref={menuRef}>
           <button className="user-menu-btn" type="button" aria-expanded={menuOpen} aria-haspopup="true" onClick={() => setMenuOpen(o => !o)}>
